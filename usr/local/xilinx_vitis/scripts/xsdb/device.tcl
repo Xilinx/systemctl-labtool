@@ -1,31 +1,70 @@
 package require tcf
 package require xsdb::tcfinterp
 
+
 namespace eval ::xsdb::device {
     variable version 0.1
     variable device_status_defs {}
+    variable add_plm_log_msg 1
 
     ::xsdb::setcmdmeta device brief {Device Configuration System}
 
     variable get_device_action {
-	lassign [get_debug_targets_cache_client $chan] targets cache_misses
-	dict for {ctx2 ctx2data} $targets {
-	    if { [catch {
-		set rc [lindex [dict get $ctx2data RunControl:context] 1]
-		if { [dict exists $rc JtagDeviceID] } {
-		    dict set targets $ctx2 JtagDevice:properties [lindex [get_ctx_data $chan [dict get $rc JtagDeviceID] JtagDevice:properties] 1]
-		}
-	    } msg] } {
-		if { $msg == $::cache_miss_err } {
-		    incr cache_misses
-		}
-	    }
-	}
-	if { $cache_misses > 0 } {
-	    error $::cache_miss_err
-	}
+    lassign [get_debug_targets_cache_client $chan] targets cache_misses
+    lassign [get_jtag_nodes_cache_client $chan] jtag_targets jtag_cache_misses
+    incr cache_misses $jtag_cache_misses
+    dict for {ctx2 ctx2data} $targets {
+        if { [catch {
+        set rc [lindex [dict get $ctx2data RunControl:context] 1]
+        if { [dict exists $rc JtagDeviceID] } {
+            dict set targets $ctx2 JtagDevice:properties [lindex [get_ctx_data $chan [dict get $rc JtagDeviceID] JtagDevice:properties] 1]
+        }
+        } msg] } {
+        if { $msg == $::cache_miss_err } {
+            incr cache_misses
+        }
+        }
+    }
+    if { $cache_misses > 0 } {
+        error $::cache_miss_err
+    }
 
-    if { [dict exists $targets $ctx RunControl:context] &&
+    set rc {}
+    if {$ctx ne ""} {
+        set rc [lindex [dict get $targets $ctx RunControl:context] 1]
+    }
+
+    if {$rc ne {} && [string first "DAP" [dict get $rc Name]] != -1} {
+        if { [catch {
+        set jtag_ctx [dict get $rc JtagNodeID]
+        set jc [lindex [dict get $jtag_targets $jtag_ctx Jtag:context] 1]
+        set parent  [dict get $jtag_targets [dict get $jc ParentID]]
+        set children [dict get $parent children]
+        set index [lsearch $children $jtag_ctx]
+        switch [dict get $rc JtagDeviceID] {
+            1268778103 {incr index -1}
+            1537213559 {incr index}
+            1805649015 {incr index}
+            default {set index -1}
+        }
+        if {$index >= 0 && $index < [llength $children]} {
+            set ctx2 [lindex $children $index]
+            set jc [lindex [dict get $jtag_targets $ctx2 Jtag:context] 1]
+            set dp [lindex [get_ctx_data $chan [dict get $jc idCode] JtagDevice:properties] 1]
+
+        }
+        } msg] } {
+        if { $msg == $::cache_miss_err } {
+            incr cache_misses
+        }
+        }
+        if { $cache_misses > 0 } {
+            error $::cache_miss_err
+        }
+        if {[dict exists $dp reg.jconfig]} {
+            set node $ctx2
+        }
+    } elseif { [dict exists $targets $ctx RunControl:context] &&
          [dict exists [lindex [dict get $targets $ctx RunControl:context] 1] DpcTargetID] } {
         set rc [lindex [dict get $targets $ctx RunControl:context] 1]
         if { [dict exists $rc DpcDriverName] && [dict get $rc DpcDriverName] == "dpc-jtag" } {
@@ -34,30 +73,30 @@ namespace eval ::xsdb::device {
         }
         set node [dict get $rc DpcTargetID]
     } elseif { ![dict exists $targets $ctx JtagDevice:properties] ||
-	     ![dict exists [dict get $targets $ctx JtagDevice:properties] reg.jconfig] } {
-	    set devices {}
-	    dict for {ctx2 ctx2data} $targets {
-		if { [dict exists $ctx2data JtagDevice:properties] &&
-		     [dict exists [dict get $ctx2data JtagDevice:properties] reg.jconfig] } {
-		    lappend devices $ctx2
-		}
-	    }
-	    if { [llength $devices] == 1 } {
-		set ctx [lindex $devices 0]
-	    } else {
-		if { [llength $devices] == 0 } {
-		    set err "No supported device found"
-		} else {
-		    set ids {}
-		    foreach ctx2 $devices {
-			lappend ids [dict get $targets $ctx2 target_id]
-		    }
-		    set ids [lsort $ids]
-		    set err "Multiple devices found, please use targets command to select one of: [join $ids {, }]"
-		}
-		break
-	    }
-	}
+         ![dict exists [dict get $targets $ctx JtagDevice:properties] reg.jconfig] } {
+        set devices {}
+        dict for {ctx2 ctx2data} $targets {
+        if { [dict exists $ctx2data JtagDevice:properties] &&
+             [dict exists [dict get $ctx2data JtagDevice:properties] reg.jconfig] } {
+            lappend devices $ctx2
+        }
+        }
+        if { [llength $devices] == 1 } {
+        set ctx [lindex $devices 0]
+        } else {
+        if { [llength $devices] == 0 } {
+            set err "No supported device found"
+        } else {
+            set ids {}
+            foreach ctx2 $devices {
+            lappend ids [dict get $targets $ctx2 target_id]
+            }
+            set ids [lsort $ids]
+            set err "Multiple devices found, please use targets command to select one of: [join $ids {, }]"
+        }
+        break
+        }
+    }
 
     if { ![info exists node] } {
         set rc [lindex [dict get $targets $ctx RunControl:context] 1]
@@ -66,13 +105,14 @@ namespace eval ::xsdb::device {
         set node [dict get $rc JtagNodeID]
     }
 
-	dict set arg node $node
-	incr curaction
+    dict set arg node $node
+    incr curaction
     }
 
     proc program {args} {
         variable curtarget
-	variable get_device_action
+        variable get_device_action
+        variable add_plm_log_msg
 
         set options {
             {file "program file" {args 1}}
@@ -131,20 +171,20 @@ namespace eval ::xsdb::device {
         # Initialize device for programming
         dict lappend arg actions {
             if { $numreq > 0 } {
-		cache wait
+        cache wait
             }
             if { !$partial } {
-		if { [catch {eval_progress [list info "initializing"]} msg] } {
-		    dict set arg err $msg
-		    break
-		}
+        if { [catch {eval_progress [list info "initializing"]} msg] } {
+            dict set arg err $msg
+            break
+        }
 
-		send_action_command $argvar Xicom configBegin so{} e [list $node {}] {
-		    if { [lindex $data 0] != "" } {
-			error [lindex $data 0]
-		    }
-		}
-		incr numreq 1
+        send_action_command $argvar Xicom configBegin so{} e [list $node {}] {
+            if { [lindex $data 0] != "" } {
+            error [lindex $data 0]
+            }
+        }
+        incr numreq 1
             }
             incr curaction
         }
@@ -166,6 +206,7 @@ namespace eval ::xsdb::device {
 
         # Program the device
         dict lappend arg actions {
+            variable device_program_stage
             if { $aborting != "" } {
                 if { !$cancelled } {
                     set cancelled 1
@@ -176,6 +217,7 @@ namespace eval ::xsdb::device {
                     cache wait
                 }
                 set err $aborting
+                set device_program_stage ""
                 break
             }
 
@@ -183,10 +225,12 @@ namespace eval ::xsdb::device {
             set len [string length $data]
             if { $len == 0 } {
                 set err "premature end of file"
+                set device_program_stage ""
                 incr curaction
                 break
             }
 
+            set device_program_stage "config_data"
             send_action_command $argvar Xicom configData sB e [list $node $data] {
                 set transfers [dict get $arg transfers]
                 foreach {cb len ts} [lindex $transfers 0] break
@@ -238,7 +282,33 @@ namespace eval ::xsdb::device {
             }
             #set status
         }
-        return [::xsdb::process_tcf_actions $arg ::xsdb::print_progress]
+
+        if { [catch {::xsdb::process_tcf_actions $arg ::xsdb::print_progress} msg] } {
+            set config_stage [::tcf::sync_eval {
+                variable device_program_stage
+                if { ![info exists device_program_stage] } {
+                    return ""
+                }
+                set ret $device_program_stage
+                unset device_program_stage
+                return $ret
+            }]
+            if { $add_plm_log_msg && $config_stage != "" } {
+                set add_plm_log_msg 0
+                append msg "\nRun \"plm log\" command to see PDI boot messages."
+                append msg "\n\nThis extra message about \"plm log\" command will not be"
+                append msg "\ndisplayed for subsequent \"device program\" errors during"
+                append msg "\nthis session.\n"
+            }
+            error "$msg"
+        }
+        ::tcf::sync_eval {
+            variable device_program_stage
+            if { [info exists device_program_stage] } {
+                unset device_program_stage
+            }
+        }
+        return
     }
     namespace export program
     ::xsdb::setcmdmeta {device program} categories {device}
@@ -256,6 +326,8 @@ NOTE {
 
     device program command is currently supported for Versal devices only. Other
     devices will be supported in future releases.
+
+    For Versal devices, users can run "plm log" to retrieve plm log from memory.
 }
 RETURNS {
     Nothing, if device is configured, or an error if the configuration failed.
@@ -264,11 +336,12 @@ RETURNS {
 
     proc status {args} {
         variable curtarget
-	variable get_device_action
+        variable get_device_action
 
         set options {
             {jreg-name "JTAG register name" {args 1}}
             {hex "Format data in hex"}
+            {jtag-target "Jtag target to use instead of current target" {args 1}}
             {help "command help"}
         }
         array set params [::xsdb::get_options args $options 0]
@@ -297,9 +370,26 @@ RETURNS {
         dict set arg cancelled 0
         dict set arg state ""
 
-        # Find the 1st device, if the current context is not device and
-        # map target context to jtag context
-        dict lappend arg actions $get_device_action
+        set node ""
+        if {[info exists params(jtag-target)]} {
+            set targets [::xsdb::jtag::targets -target-properties]
+            foreach target $targets {
+                if {[dict get $target node_id] == $params(jtag-target)} {
+                    set node [dict get $target target_ctx]
+                    dict set arg node $node
+                    break
+                }
+            }
+            if {$node == ""} {
+                error "no JTAG target with id $params(jtag-target)"
+            }
+        }
+
+        if {$node == ""} {
+            # Find the 1st device, if the current context is not device and
+            # map target context to jtag context
+            dict lappend arg actions $get_device_action
+        }
 
         # Get the list of registers or register status
         dict lappend arg actions {
@@ -406,6 +496,10 @@ OPTIONS {
         register name can be directly specified as an argument without using
         this option.
 
+    -jtag-target <jtag-target-id>
+        Specify jtag target id to use instead of the current target.  This is primarily 
+        used when there isn't a valid target option.
+
     -hex
         Format the return data in hexadecimal.
 }
@@ -413,6 +507,133 @@ RETURNS {
     Status report.
 }
 }
+
+    proc authjtag {args} {
+        variable curtarget
+        variable get_device_action
+
+        set options {
+            {file "secure debug file" {args 1}}
+            {jtag-target "Jtag target to use instead of current target" {args 1}}
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options 0]
+
+        if { $params(help) } {
+            return [help device [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
+
+        # check file param
+        if { ![info exists params(file)]} {
+            if { [llength $args] > 0 } {
+                set params(file) [lindex $args 0]
+                set args [lrange $args 1 end]
+            } else {
+                error "no secure debug file specified"
+            }
+        }
+
+        if { [llength $args] != 0 } {
+            error "wrong # args: should be \"device authjtag ?options? <file>\""
+        }
+
+        set arg [array get params]
+        dict set arg chan [::xsdb::getcurchan]
+        dict set arg ctx $::xsdb::curtarget
+        dict set arg current_bytes 0
+        dict set arg total_bytes 0
+        dict set arg transfers {}
+        dict set arg aborting ""
+        dict set arg cancelled 0
+        dict set arg state ""
+
+        set node ""
+        if {[info exists params(jtag-target)]} {
+            set targets [::xsdb::jtag::targets -target-properties]
+            foreach target $targets {
+                if {[dict get $target node_id] == $params(jtag-target)} {
+                    set node [dict get $target target_ctx]
+                    dict set arg node $node
+                    break
+                }
+            }
+            if {$node == ""} {
+                error "no JTAG target with id $params(jtag-target)"
+            }
+        }
+
+        if {$node == ""} {
+            # Find the 1st device, if the current context is not device and
+            # map target context to jtag context
+            dict lappend arg actions $get_device_action
+        }
+
+        # Open file
+        dict lappend arg actions {
+            set f [::open $file rb]
+            dict set arg f $f
+            set total_bytes [::file size $file]
+            if { $total_bytes == 0 } {
+                set err "empty secure debug file"
+            }
+            incr curaction
+        }
+
+        # Secure debug the device
+        dict lappend arg actions {
+            set data [::read $f $total_bytes]
+            set len [string length $data]
+            if { $len == 0 } {
+                set err "premature end of file"
+                incr curaction
+                break
+            }
+
+            send_action_command $argvar Xicom secureDebug sB e [list $node $data] {}
+            incr numreq 1
+            incr current_bytes $len
+            lappend transfers [list $current_bytes $len [clock milliseconds]]
+            if { $total_bytes == $current_bytes } {
+                incr curaction
+            }
+        }
+
+        dict set arg result {
+            if { [info exist f] } {
+                ::close $f
+            }
+            #set status
+        }
+        return [::xsdb::process_tcf_actions $arg ::xsdb::print_progress]
+    }
+    namespace export authjtag
+    interp alias {} ::xsdb::device::secdebug {} ::xsdb::device::authjtag
+    namespace export secdebug
+    ::xsdb::setcmdmeta {device authjtag} categories {device}
+    ::xsdb::setcmdmeta {device authjtag} brief {Secure Debug BIN}
+    ::xsdb::setcmdmeta {device authjtag} description {
+SYNOPSIS {
+    device authjtag <file>
+        Unlock device for secure debug.
+}
+OPTIONS {
+    -jtag-target <jtag-target-id>
+        Specify jtag target id to use instead of the current target.  This is primarily 
+        used when there isn't a valid target option.
+}
+NOTE {
+    If no target is selected or if the current target is not a configurable
+    device, and only one supported device is found in the targets list, then
+    this device will be configured. Otherwise, users will have to select a
+    device using targets command.
+
+    device authjtag command is currently supported for Versal devices only.
+}
+RETURNS {
+    Nothing, if secure debug is successful, or an error if failed.
+}
+}
+
 
     namespace ensemble create -command ::device
 }

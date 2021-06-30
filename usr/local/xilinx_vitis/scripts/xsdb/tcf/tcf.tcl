@@ -1,5 +1,5 @@
 #######################################################################
-# Copyright (c) 2013-2018 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2013-2021 Xilinx, Inc.  All rights reserved.
 #
 # This   document  contains  proprietary information  which   is
 # protected by  copyright. All rights  are reserved. No  part of
@@ -27,15 +27,31 @@ package require Tcl 8.5
 namespace eval tcf {
     variable version 0.1
 
+    # Temp changes to support gradle builds, which creates the libs with
+    # libxv_ prefix instead of lib prefix. gradle build scripts search and
+    # replace "set GRADLE_BUILD 0" with "set GRADLE_BUILD 1" during build,
+    # so libxv_* libs are loaded when the tool is run from gradle output
+    set GRADLE_BUILD 0
+    if { $GRADLE_BUILD } {
+	if { $::tcl_platform(platform) == "windows" } {
+	    set lib_name [join xv_tcltcf[info sharedlibextension]]
+	} else {
+	    set lib_name [join libxv_tcltcf[info sharedlibextension]]
+        }
+    } else {
+	set lib_name [join libtcltcf[info sharedlibextension]]
+    }
+
     set loaded 0
+    set pkg_name "Tcltcf"
     foreach d $::auto_path {
-	if { ![catch {load [file join $d libtcltcf[info sharedlibextension]]}] } {
+	if { ![catch {load [file join $d $lib_name] $pkg_name}] } {
 	    set loaded 1
 	    break
 	}
     }
     if { !$loaded } {
-	load libtcltcf[info sharedlibextension]
+	load $lib_name $pkg_name
     }
 
     ::tcf::eval {

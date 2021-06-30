@@ -754,7 +754,7 @@ proc ::add_channel {chan url} {
 		    }]
 
 		    ::tcf::on_event $chan Registers contextChanged [subst -noc {
-			::tcf::read {$chan} {}
+			::tcf::read {$chan} o{}
 			invalidate_datatypes "" [list Registers:context Registers:children] 1
 		    }]
 		}
@@ -1124,6 +1124,17 @@ proc ::get_jtag_nodes {chan} {
 
     set_jtag_node_id $chan nodes
     return $nodes
+}
+
+proc ::get_jtag_nodes_cache_client {chan} {
+    set cache_misses 0
+    incr cache_misses [get_context_datatypes nodes $chan {Jtag:children} {Jtag:context} "" -1]
+    incr cache_misses [get_context_datatypes nodes $chan {Jtag:children} {Jtag:capabilities JtagCable:context} "" 2]
+
+    if {$cache_misses == 0 } {
+	set_jtag_node_id $chan nodes
+    }
+    return [list $nodes $cache_misses]
 }
 
 proc ::get_processes {chan} {
