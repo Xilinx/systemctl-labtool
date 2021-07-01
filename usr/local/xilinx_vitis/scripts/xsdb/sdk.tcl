@@ -246,173 +246,6 @@ namespace eval ::sdk {
 	}
     }
 
-    proc create_project {args} {
-	puts "\nNote:: \"create_project\" command is Deprecated. Use \"sdk createhw\", \
-	     \"sdk createbsp\" and \"sdk createapp\" commands"
-	set options {
-	    {type "project type" {default "hw" args 1}}
-	    {name "project name" {args 1}}
-	    {app "application template" {default {Hello World} args 1}}
-	    {proc "target processor" {args 1}}
-	    {hwspec "hwspecification file" {args 1}}
-	    {hwproject "hwproject name" {args 1}}
-	    {bsp "bsp project name" {default "" args 1}}
-	    {os "project OS" {default "standalone" args 1}}
-	    {lang "project launguage" {default "c" args 1}}
-	    {mss "MSS File Path" {args 1}}
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
-
-	if { $params(help) } {
-	    return [help [lindex [info level 0] 0]]
-	}
-
-	if { ![info exists params(name)] } {
-	    error "Project name not specified"
-	}
-
-	switch $params(type) {
-	    hw {
-		if { ![info exists params(hwspec)] } {
-		    error "Specify a HW specification file to create hw project"
-		}
-		if { [info exists params(hwproject)] || [info exists params(proc)] } {
-		    error "Extra args with -hw option"
-		}
-		return [create_hw_project -name $params(name) -hwspec $params(hwspec)]
-	    }
-	    bsp {
-		if { ![info exists params(hwproject)] } {
-		    error "Specify a hwproject name to create a BSP project"
-		}
-
-		if { [info exists params(mss)] } {
-		    if { [file isfile $params(mss)] == 0} {
-			error "Invalid mss file path"
-		    }
-		} elseif { ![info exists params(proc)] } {
-		    error "Specify a processor instance to create a BSP project"
-		}
-
-		if { [info exists params(hwspec)] } {
-		    error "Extra args with -bsp option"
-		}
-		if { [info exists params(mss)] } {
-		    return [create_bsp_project -name $params(name) -hwproject $params(hwproject) \
-			    -mss $params(mss)]
-		} else {
-		    return [create_bsp_project -name $params(name) -hwproject $params(hwproject) \
-			    -proc $params(proc) -os $params(os)]
-		}
-	    }
-	    app {
-		if { ![info exists params(hwproject)] } {
-		    error "Specify a hwproject name to create an application project"
-		}
-		if { ![info exists params(proc)] } {
-		    error "Specify a processor instance to create an application project"
-		}
-		if { [info exists params(hwspec)] } {
-		    error "Extra args with -app option"
-		}
-		if { [string compare -nocase $params(os) "Linux"] == 0 } {
-		    if { $params(bsp) != "" } {
-			puts "WARNING: BSP is not required for Linux applications"
-		    }
-		} else {
-		    if { $params(bsp) == "" } {
-			set params(bsp) "$params(name)_bsp"
-		    }
-		}
-		return [create_app_project -name $params(name) -hwproject $params(hwproject) \
-			    -proc $params(proc) -os $params(os) -lang $params(lang) -app $params(app) -bsp $params(bsp)]
-	    }
-	    default {
-		error "Unknown project type $params(type)"
-	    }
-	}
-    }
-    namespace export create_project
-
-    proc set_workspace { args } {
-	puts "\nNote:: \"set_workspace\" command is Deprecated. Use \"setws\" command"
-	return [setws {*}$args]
-    }
-    namespace export set_workspace
-
-    proc get_workspace { args } {
-	puts "\nNote:: \"get_workspace\" command is Deprecated. Use \"getws\" command"
-	return [getws {*}$args]
-    }
-    namespace export get_workspace
-
-    proc create_hw_project { args } {
-	puts "\nNote:: \"create_hw_project\" command is Deprecated. Use \"createhw\" command"
-	return [createhw {*}$args]
-    }
-    namespace export create_hw_project
-
-    proc create_bsp_project { args } {
-	puts "\nNote:: \"create_bsp_project\" command is Deprecated. Use \"createbsp\" command"
-	return [createbsp {*}$args]
-    }
-    namespace export create_bsp_project
-
-    proc create_app_project { args } {
-	puts "\nNote:: \"create_app_project\" command is Deprecated. Use \"createapp\" command"
-	return [createapp {*}$args]
-    }
-    namespace export create_app_project
-
-    proc import_projects { args } {
-	puts "\nNote:: \"import_projects\" command is Deprecated. Use \"importprojects\" command"
-	return [importprojects {*}$args]
-    }
-    namespace export import_projects
-
-    proc import_sources { args } {
-	puts "\nNote:: \"import_sources\" command is Deprecated. Use \"importsources\" command"
-	return [importsources {*}$args]
-    }
-    namespace export import_sources
-
-    proc get_projects { args } {
-	puts "\nNote:: \"get_projects\" command is Deprecated. Use \"getprojects\" command"
-	return [getprojects {*}$args]
-    }
-    namespace export get_projects
-
-    proc delete_projects { args } {
-	puts "\nNote:: \"delete_projects\" command is Deprecated. Use \"deleteprojects\" command"
-	return [deleteprojects {*}$args]
-    }
-    namespace export delete_projects
-
-    proc build_project { args } {
-	puts "\nNote:: \"build_project\" command is Deprecated. Use \"projects -build\" command"
-	return [projects -build {*}$args]
-    }
-    namespace export build_project
-
-    proc clean_project { args } {
-	puts "\nNote:: \"clean_project\" command is Deprecated. Use \"projects -clean\" command"
-	return [projects -clean {*}$args]
-    }
-    namespace export clean_project
-
-    proc set_user_repo_path {args} {
-	puts "\nNote:: \"set_user_repo_path\" command is Deprecated. Use \"repo -set\" command"
-	return [set_user_repo_path_sdk $args]
-    }
-    namespace export set_user_repo_path
-
-    proc get_user_repo_path {args} {
-	puts "\nNote:: \"get_user_repo_path\" command is Deprecated. Use \"repo -get\" command"
-	return [get_user_repo_path_sdk $args]
-    }
-    namespace export get_user_repo_path
-
     proc setws { args } {
 	variable sdk_workspace
 	variable sdk_chan
@@ -528,7 +361,13 @@ RETURNS {
 	if { [llength $args] != 1 } {
 	    error "Wrong # args: should be \"sdk set_user_repo_path path\""
 	}
+
 	set repo_path [lindex $args 0]
+	set file_list [glob -nocomplain -directory $repo_path *]
+	if { [llength $file_list] == 0 } {
+	    puts "WARNING: repository path given is empty"
+	}
+
 	set chan [getsdkchan]
 	xsdk_eval $chan "XSDx" "setRepo" "o{Path s}" e [list [dict create Path [file normalize $repo_path]]]
 	return
@@ -548,24 +387,8 @@ RETURNS {
 	return [xsdk_eval $chan "XSDx" getRepo "" s [list]]
     }
 
-    proc get_app_templates {args} {
-	puts "\nNote:: \"get_app_templates\" command is Deprecated. Use \"repo -apps\" command"
-	variable help_prefix
-	set options {
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
-
-	if { $params(help) } {
-	    return [help [subst $help_prefix][lindex [split [lindex [info level 0] 0] ::] end]]
-	}
-
-	return [::hsi::utils::get_all_app_details]
-    }
-    namespace export get_app_templates
-
     proc createhw {args} {
-	puts "\nNote:: \"createhw\" command is Deprecated. Use \"platform\" command"
+	puts "\nNote:: \"createhw\" command is deprecated. Use \"platform\" command"
 	variable sdk_workspace
 	variable help_prefix
 
@@ -668,7 +491,7 @@ RETURNS {
     namespace export changebsp
 
     proc createbsp {args} {
-	puts "\nNote:: \"createbsp\" command is Deprecated. Use \"platform\" command"
+	puts "\nNote:: \"createbsp\" command is deprecated. Use \"platform\" command"
 	variable sdk_workspace
 	variable help_prefix
 
@@ -948,6 +771,7 @@ RETURNS {
 			puts "WARNING: $params(os) not supported for the processor type - $params(proc). Setting to aie_runtime"
 			set params(os) "aie_runtime"
 		    }
+		    set params(proc) [::scw::get_processor_name $params(proc) $params(hw)]
 		} elseif { [info exists params(name)] } {
 		    if { [info exists params(sysproj)] } {
 			if { ![info exists params(domain)] } {
@@ -1061,11 +885,6 @@ RETURNS {
 
 		if { [info exists params(name)] } {
 		    if { [info exists params(hw)] } {
-			if { $params(os) == "linux" } {
-			    error "Invalid argument, 'linux' not supported for\n\
-				   application creation using -hw option"
-			}
-
 			set archtype ""
 			if { [info exists params(arch)]  &&  $params(arch) != "" } {
 			    if { $params(arch) == "32-bit" || $params(arch) == "32" } {
@@ -1081,11 +900,21 @@ RETURNS {
 			    } else {
 				error "Illegal arch type $params(arch). must be 32/64"
 			    }
-			} elseif { [string match "psu_cortexa53*" $params(proc)] || [string match "psv_cortexa72*" $params(proc)] || \
-			    [string match "psu_cortexa72*" $params(proc)] } {
+			} elseif { [string match "psu_cortexa53*" $params(proc)] || [string match "*psv_cortexa72*" $params(proc)] || \
+			    [string match "*psu_cortexa72*" $params(proc)] } {
 			    set archtype 64
 			} else {
 			    set archtype 32
+			}
+
+			if { [string compare -nocase $params(os) "linux"] != 0  && $params(proc) != "ai_engine" } {
+			    set ipname [hsi get_property IP_NAME [ hsi get_cells -filter "IP_TYPE == PROCESSOR" -hierarchical $params(proc) ]]
+			    if { $ipname == "microblaze"} {
+			        set datasize [hsi get_property CONFIG.C_DATA_SIZE  [ hsi get_cells -filter "IP_TYPE == PROCESSOR" -hierarchical  $params(proc) ]]
+			        if { $datasize == "64" } {
+				    set archtype 64
+			        }
+			    }
 			}
 
 			set fmt [dict create Name s Hw s Proc s Os s Language s TemplateApp s ArchType s OutPutFormat s]
@@ -1277,6 +1106,7 @@ RETURNS {
 		set options {
 		    {name "name of the application project" {args 1}}
 		    {platform "platform name or xpfm path" {args 1}}
+		    {domain "domain name" {default "" args 1}}
 		    {help "command help"}
 		}
 		array set params [::xsdb::get_options args $options 0]
@@ -1291,7 +1121,7 @@ RETURNS {
 		}
 
 		set chan [getsdkchan]
-		set retval [xsdk_eval $chan "XSDx" appSwitch "o{[dict create Name s Platform s]}" e [list [dict create Name $params(name) Platform $params(platform)]]]
+		set retval [xsdk_eval $chan "XSDx" appSwitch "o{[dict create Name s Platform s Domain s]}" e [list [dict create Name $params(name) Platform $params(platform) Domain $params(domain)]]]
 		if { [lindex $retval 0] != "" } {
 		    error $retval
 		}
@@ -1977,7 +1807,7 @@ EXAMPLE {
 }
 
     proc createapp {args} {
-	puts "\nNote:: \"createapp\" command is Deprecated. Use \"app create\" command"
+	puts "\nNote:: \"createapp\" command is deprecated. Use \"app create\" command"
 	variable sdk_workspace
 	variable help_prefix
 	set options {
@@ -2074,7 +1904,7 @@ EXAMPLE {
     namespace export createapp
 
     proc createlib {args} {
-	puts "\nNote:: \"createlib\" command is Deprecated. Use \"library create\" command"
+	puts "\nNote:: \"createlib\" command is deprecated. Use \"library create\" command"
 	variable sdk_workspace
 	variable help_prefix
 
@@ -2146,7 +1976,7 @@ EXAMPLE {
     namespace export createlib
 
     proc projects { args } {
-	puts "\nNote:: \"projects\" command is Deprecated. Use \"app build\" or \"app clean\" command"
+	puts "\nNote:: \"projects\" command is deprecated. Use \"app build\" or \"app clean\" command"
 	variable sdk_workspace
 	variable help_prefix
 
@@ -2546,6 +2376,8 @@ EXAMPLE {
     }
 
     proc addplatforms { args } {
+	# To enforce a call to get the list of platforms using the Platform API, from GUI.
+	set platformslist [::scw::platform list]
 	set projs ""
 	set chan [getsdkchan]
 	if { [llength $args] != 1 } {
@@ -2580,7 +2412,7 @@ EXAMPLE {
     }
 
     proc deleteprojects { args } {
-	puts "\nNote:: \"deleteprojects\" command is Deprecated. Use \"app remove\" command"
+	puts "\nNote:: \"deleteprojects\" command is deprecated. Use \"app remove\" command"
 	variable sdk_workspace
 	variable help_prefix
 	set options {
@@ -2612,29 +2444,8 @@ EXAMPLE {
     }
     namespace export deleteprojects
 
-    proc set_build_config { args } {
-	puts "\nNote:: \"set_build_config\" command is Deprecated. Use \"configapp\" command"
-	set options {
-	    {app "application name" {args 1}}
-	    {type "build config type" {args 1}}
-	}
-	array set params [::xsdb::get_options args $options]
-	return [configapp -app $params(app) build-config $params(type)]
-    }
-    namespace export set_build_config
-
-    proc get_build_config { args } {
-	puts "\nNote:: \"get_build_config\" command is Deprecated. Use \"configapp\" command"
-	set options {
-	    {app "application name" {args 1}}
-	}
-	array set params [::xsdb::get_options args $options]
-	return [configapp -app $params(app) build-config]
-    }
-    namespace export get_build_config
-
     proc configapp { args } {
-	puts "\nNote:: \"configapp\" command is Deprecated. Use \"app config\" command"
+	puts "\nNote:: \"configapp\" command is deprecated. Use \"app config\" command"
 	variable sdk_workspace
 	variable help_prefix
 	set options {
@@ -2656,11 +2467,12 @@ EXAMPLE {
 	}
 
 	set chan [getsdkchan]
-	if { [isAIEApp $params(name) ] == "1" } {
+	if { [isAIEApp $params(app) ] == "1" } {
 	    set defs [lindex [xsdk_eval $chan SDxBuildSettings getAIEDefinitions s "eA" [list ""]] 1]
 	} else {
 	    set defs [lindex [xsdk_eval $chan SDxBuildSettings getDefinitions s "eA" [list ""]] 1]
 	}
+
 	set names [lsort [dict keys $defs]]
 	if { [llength $args] == 0 } {
 	    if { $params(set) + $params(add) + $params(remove) + $params(info) != 0 } {

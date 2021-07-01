@@ -67,6 +67,10 @@ namespace eval ::xsdb::jtag {
 	    if { [dict exists $node is_fpga] } {
 		lappend info fpga
 	    }
+	    if { [dict exists $node is_pdi_programmable] } {
+		lappend info pdi_programmable
+	    }
+
 	    if { ![dict get $node is_active] } {
 		lappend info inactive
 	    } elseif { $level == 0 && ![dict get $node is_open] } {
@@ -194,6 +198,9 @@ namespace eval ::xsdb::jtag {
 		set devprops [lindex [dict get $targets $ctx JtagDevice:properties] 1]
 		if { [dict exists $devprops reg.jprogram] } {
 		    dict set props is_fpga 1
+		}
+		if { [dict exists $devprops is_pdi_program_supported] && [dict get $devprops is_pdi_program_supported] } {
+		    dict set props is_pdi_programmable 1
 		}
 	    }
 

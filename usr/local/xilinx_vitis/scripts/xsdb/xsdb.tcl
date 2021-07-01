@@ -1,5 +1,5 @@
 #######################################################################
-# Copyright (c) 2013-2019 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2013-2020 Xilinx, Inc.  All rights reserved.
 #
 # This   document  contains  proprietary information  which   is
 # protected by  copyright. All rights  are reserved. No  part of
@@ -516,14 +516,17 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
 						}
 						incr total_bytes $filesz
 					    }
-					    if { $clear && $filesz < $memsz } {
-						set clearsz [expr $memsz - $filesz]
+					    if { $filesz < $memsz } {
 						if { [dict get $arg vaddr] } {
-						    lappend actions [list clear [expr $vaddr + $filesz] $clearsz]
+						    set mem_addr $vaddr
 						} else {
-						    lappend actions [list clear [expr $paddr + $filesz] $clearsz]
+						    set mem_addr $paddr
 						}
-						incr total_bytes $clearsz
+						if { $clear || ($clear_tcm && $mem_addr < $tcm_size) } {
+						    set clearsz [expr $memsz - $filesz]
+						    lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
+						    incr total_bytes $clearsz
+						}
 					    }
 					}
 				    }
@@ -616,7 +619,7 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
 			    }
 
 			    ::tcf::send_command $chan Memory fill [list download_data_callback $argvar $size]
-			    ::tcf::write $chan "siiiia{i}" [list $memctx $addr 1 $size 0 { 0 }]
+			    ::tcf::write $chan "siiiia{i}" [list $memctx $addr 0 $size $mode { 0 }]
 			    incr numreq
 			    incr curpos $size
 			}
@@ -1746,8 +1749,8 @@ namespace eval ::xsdb {
     variable streamtable [dict create]
     variable streamreader_bufs [dict create]
     variable memmapmetadata {Addr i Size i Flags i FileName s Offs i SectionName s ID s OSA {o{Mode i}}\
-				Registers "a{o{[Description s ID s Name s Readable b]\
-				a{o{[ParentID s Description s Bits a{i} Size i Readable b ID s Writeable b MemoryAddress i Name s]}}}}"}
+			     Alignment i Registers "a{o{[Description s ID s Name s Readable b]\
+			     a{o{[ParentID s Description s Bits a{i} Size i Readable b ID s Writeable b MemoryAddress i Name s]}}}}"}
     variable memmaptable [dict create]
     variable memmap_ctxs [dict create]
     variable designtable [dict create]
@@ -1757,12 +1760,17 @@ namespace eval ::xsdb {
     variable profile_config [dict create]
     variable expr_fmt_dict [dict create]
     variable mask_write_warnings 1
+    variable reset_warnings 1
     variable enable_source_line_view 1
     variable source_line_info [dict create]
     variable mb_profile_config [dict create]
     variable mb_trace_config [dict create]
     variable pmccmds [dict create]
     variable silent_mode [expr !$::tcl_interactive]
+    variable tcm_clear_warnings 1
+    variable subsystem_activate_warnings 1
+    variable ipi_channel_mask_warnings 1
+    variable ipxactfiles [dict create]
 
     dict set expr_fmt_dict 1 [dict create 1 cu 2 su 4 iu 8 wu]
     dict set expr_fmt_dict 4 [dict create 1 cu 2 su 4 iu 8 wu]
@@ -1864,7 +1872,7 @@ namespace eval ::xsdb {
     setcmdmeta registers brief {Target Registers}
     setcmdmeta running brief {Program Execution}
     setcmdmeta reset brief {Target Reset}
-    setcmdmeta pmc brief {IPI commands to PMC}
+    setcmdmeta ipi brief {IPI commands to Versal PMC}
     setcmdmeta streams brief {Jtag UART}
     setcmdmeta projects brief {Vitis Projects}
     setcmdmeta petalinux brief {Petalinux commands}
@@ -3676,6 +3684,7 @@ EXAMPLE {
 	}
 
 	set targets [::xsdb::get_debug_targets $curchan]
+	set triggered_bps {}
 	dict for {ctx state} $ctxs {
 	    if { $state == "removed" || $state == "added" || $state == "changed" } {
 		set ctx_data ""
@@ -3752,6 +3761,15 @@ EXAMPLE {
 		    puts "Info: $name (target $tid) Stopped at [format 0x%lx [lindex $state 2]]$reason"
 		    set res [get_source_line_info $curchan $ctx]
 		    if { $res != "" } { puts $res }
+		    set state_data [lindex $state 4]
+		    if { [dict exists $state_data "BPs"] } {
+			set bps [dict get $state_data "BPs"]
+			dict for {id bpdata} $bptable {
+			    if { [lsearch $bps [dict get $bpdata ID]] != -1 } {
+				lappend triggered_bps $id
+			    }
+			}
+		    }
 		} else {
 		    set state_data [lindex $state 4]
 		    if { [dict exists $state_data StateName] } {
@@ -3813,6 +3831,19 @@ EXAMPLE {
 	    }
 	    puts -nonewline $prompt
 	}
+	if { [llength $triggered_bps] != 0 } {
+	    foreach bp $triggered_bps {
+		if { [dict exists $bptable $bp script] } {
+		    foreach action [dict get $bptable $bp script] {
+			if { [catch {eval $action} msg] } {
+			    puts "error: $msg"
+			}
+		    }
+		}
+	    }
+	    puts -nonewline $prompt
+	}
+
 	flush stdout
     }
 
@@ -3957,7 +3988,7 @@ SYNOPSIS {
 
     proc stop { args } {
 	set options {
-	    {timeout "timeout for blocking" {default 100 args 1}}
+	    {timeout "timeout for blocking" {default 3000 args 1}}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options]
@@ -5142,6 +5173,7 @@ EXAMPLE {
 	    {relocate-section-map "relocate program section map" {args 1}}
 	    {properties "advanced properties" {default {} args 1}}
 	    {meta-data "meta data for advanced properties" {default {} args 1}}
+	    {alignment "alignment for memory accesses for the region" {args 1}}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options]
@@ -5234,6 +5266,9 @@ EXAMPLE {
 	checkint $params(size)
 	checkint $params(flags)
 	checkint $params(offset)
+	if { [info exists params(alignment)] } {
+	    checkint $params(alignment)
+	}
 
         set data [dict create]
 	set map {}
@@ -5297,6 +5332,9 @@ EXAMPLE {
 		dict set data Size $params(size)
 		dict set data Offs $params(offset)
 		dict set data Flags $params(flags)
+		if { [info exists params(alignment)] } {
+		    dict set data Alignment $params(alignment)
+		}
 		if { $params(osa) } {
 		    dict set data OSA 0
 		}
@@ -5321,6 +5359,10 @@ OPTIONS {
     -addr <memory-address>
         Address of the memory region that should be added/removed from
         the target's memory map.
+
+    -alignment <bytes>
+        Force alignment during memory accesses for a memory region. If alignment
+        is not specified, default alignment is chosen during memory accesses.
 
     -size <memory-size>
         Size of the memory region.
@@ -5377,16 +5419,27 @@ EXAMPLE {
 }
 }
 
+    proc get_versal_target_id { } {
+	foreach t [targets -target] {
+	    if { ![string compare -length [string length "Versal"] "Versal" [dict get $t name]] } {
+	        return [dict get $t target_id]
+	    }
+	}
+    }
+
     proc dow {args} {
 	variable memmaptable
 	variable force_mem_accesses
 	variable profile_config
 	variable mb_profile_config
 	variable mb_trace_config
+	variable tcm_clear_warnings
 
 	set options {
 	    {data "download binary file"}
 	    {clear "clear uninitialized data (bss)"}
+	    {skip-tcm-clear "skip clearing uninitialized data (bss) in TCM for Versal"}
+	    {skip-activate-subsystem "skip activating default subsystem for Versal"}
 	    {keepsym "keep old symbol files" {default 0}}
 	    {chunksize "chuck size" {default 0x4000 args 1}}
 	    {force "override access protection"}
@@ -5409,6 +5462,26 @@ EXAMPLE {
 
 	set params(chan) [getcurchan]
 	set params(ctx) [getcurtarget]
+
+	set params(clear_tcm) 0
+	if  { !$params(skip-tcm-clear) } {
+	    set rc [lindex [::tcf::cache_eval $params(chan) [list get_context_cache_client $params(chan) $params(ctx) RunControl:context]] 1]
+	    if { [dict_get_safe $rc CPUType] == "ARM" && [dict_get_safe $rc ARMType] == "Cortex-R5" } {
+		while { [dict_get_safe $rc ParentID] != "" } {
+		    set rc [lindex [::tcf::cache_eval $params(chan) [list get_context_cache_client $params(chan) [dict get $rc ParentID] RunControl:context]] 1]
+		    if { ![string compare -length [string length "Versal"] "Versal" [dict get $rc Name]] } {
+			set params(clear_tcm) 1
+			set params(tcm_size) 0x40000
+			set tcm_clear_warnings 0
+			puts "WARNING: Uninitialized elf sections like bss, stack, etc. will be cleared\n\
+			      \r         if they use R5 TCM. Use skip-tcm-clear to skip this.\n\
+			      \r         Further warnings will be suppressed"
+			break
+		    }
+		}
+	    }
+	}
+
 	set params(file) [file normalize [lindex $args 0]]
 	if { [llength $args] > 1 } {
 	    if { !$params(data) } {
@@ -5541,6 +5614,12 @@ OPTIONS {
     -clear
         Clear uninitialized data (bss).
 
+    -skip-tcm-clear
+        Clear uninitialized data sections that are part of Versal TCM. This is
+        needed when elfs are loaded through debugger, so that TCM banks are
+        initialized proporly. When the elfs are part of the PDI, PLM initializes
+        the TCM, before loading the elfs.
+
     -keepsym
         Keep previously downloaded elfs in the list of symbol files. Default
         behavior is to clear the old symbol files while downloading an elf.
@@ -5570,7 +5649,7 @@ RETURNS {
 }
 
     proc elfverify {args} {
-	puts "\nNote:: \"elfverify\" command is Deprecated. Use \"verify\" command"
+	puts "\nNote:: \"elfverify\" command is deprecated. Use \"verify\" command"
 	return [verify {*}$args]
     }
     namespace export elfverify
@@ -5911,6 +5990,10 @@ RETURNS {
 }
 
     proc rst { args } {
+	variable reset_warnings
+	variable subsystem_activate_warnings
+	variable ipi_channel_mask_warnings
+
 	set options {
 	    {processor "processor reset"}
 	    {cores "processor group reset"}
@@ -5921,13 +6004,14 @@ RETURNS {
 	    {ps "ps reset through PMU MB"}
 	    {type "type of reset" {default "" args 1}}
 	    {jtag-timeout "timeout for blocking on JTAG device" {default 30000 args 1}}
-	    {timeout "timeout for blocking" {default 100 args 1}}
+	    {timeout "timeout for blocking" {default 3000 args 1}}
 	    {stop "stop cores after reset"}
 	    {start "start cores after reset"}
 	    {endianness "data endianness of the core" {default "" args 1}}
 	    {code-endianness "instruction endianness of the core" {default "" args 1}}
 	    {isa "isa of the core" {default "" args 1}}
 	    {clear-registers "clear cpu registers" }
+	    {skip-activate-subsystem "skip activating default subsystem for Versal"}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options]
@@ -5948,7 +6032,7 @@ RETURNS {
 		puts "WARNING: -start and -stop are only supported with -processor, -cores, or -system"
 	    }
 	    if { $params(endianness) != "" || $params(code-endianness) != "" || $params(isa) != "" } {
-		puts "WARNING: -endianness and -code-endianness, and -isa are only supported with -processor, -cores, or -system"
+		puts "WARNING: -endianness, -code-endianness, and -isa are only supported with -processor, -cores, or -system"
 	    }
 	}
 
@@ -5963,7 +6047,7 @@ RETURNS {
 		set rc [dict get $targets $jtaggroup RunControl:context]
 		set node [dict get [lindex $rc 1] JtagNodeID]
 
-		#Find node for scan chain and check capabilities
+		# Find node for scan chain and check capabilities
 		set nodes [::tcf::cache_eval $chan [list get_jtag_nodes $chan]]
 		set nc [dict get $nodes $node Jtag:context]
 		while { [dict exists [lindex $nc 1] ParentID] } {
@@ -6059,10 +6143,15 @@ RETURNS {
 		error "cannot reset PS.\n$msg"
 	    }
 	} else {
+	    set activate_subsystem 0
 	    if { $params(processor) } {
 		set type "core"
+		set params(stop) 1
+		set activate_subsystem 1
 	    } elseif { $params(cores) } {
 		set type "cpu"
+		set params(stop) 1
+		set activate_subsystem 1
 	    } elseif { $params(dap) } {
 		set type "dap"
 	    } else {
@@ -6071,6 +6160,18 @@ RETURNS {
 		    set type $params(type)
 		}
 	    }
+
+	    # temp code to support pmc-por thru DPC target, until its supported by hw_server
+	    set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:context]] 1]
+	    if { $type == "pmc-por" && [dict get $rc Name] == "DPC" } {
+		set msg ""
+		if { [catch {mwr 0xf126031c 0x80} msg] && $msg == "Memory write error at 0xF126031C. Connection timed out" } {
+		    return
+		} else {
+		    error $msg
+		}
+	    }
+
 	    # get supported reset types
 	    set capabilities [lindex [::tcf::send_command $chan XilinxReset getCapabilities s eo{} [list ""]] 1]
 	    set rst_types [dict get $capabilities "Types"]
@@ -6115,10 +6216,12 @@ RETURNS {
 		}
 		dict set arg clear-registers $params(clear-registers)
 	    } else {
-		if { $params(processor) +  $params(cores) != 0 } {
+		if { $params(processor) +  $params(cores) != 0 && $reset_warnings == 1 && [info level] == 1 } {
+		    set reset_warnings 0
 		    puts "WARNING: If the reset is being triggered after powering on the device,\n\
 		          \r         write bootloop at reset vector address (0xffff0000), or use\n\
-			  \r         -clear-registers option, to avoid unpredictable behavior"
+			  \r         -clear-registers option, to avoid unpredictable behavior.\n\
+		          \r         Further warnings will be suppressed"
 		}
 	    }
 	    switch -- $params(isa) {
@@ -6138,6 +6241,45 @@ RETURNS {
 		    error "unsupported isa $params(isa): must be ARM, A32, A64, or Thumb"
 		}
 	    }
+
+	    if { $activate_subsystem && !$params(skip-activate-subsystem) } {
+		set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:context]] 1]
+		if { [dict_get_safe $rc CPUType] == "ARM" } {
+		    while { [dict_get_safe $rc ParentID] != "" } {
+			set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan [dict get $rc ParentID] RunControl:context]] 1]
+			if { ![string compare -length [string length "Versal"] "Versal" [dict get $rc Name]] } {
+			    # Activate default subsystem as its not activated by PLM if the elf is not part of PDI
+			    # Otherwise, users will see run-time errors
+			    if { $subsystem_activate_warnings == 1 && [info level] == 1 } {
+				set subsystem_activate_warnings 0
+				puts "WARNING: Default system will be activated before triggering reset.\n\
+				      \r         Use skip-activate-subsystem to skip this.\n\
+				      \r         Further warnings will be suppressed"
+			    }
+			    # Check if PLM has masked IPI channel 5 from PMC_IMR
+			    setcurtarget [dict get $rc ID]
+			    set ipi5_status [expr [mrd -value 0xFF320014] & 0x80]
+			    if { $ipi5_status == 0 } {
+				set ret [pmc generic -response-size 1 0x10241 0x1c000000]
+				if { $ret != 0x0 && $ret != 0x01070000 } {
+				    error "Cannot activate default subsystem. PLM error code $ret"
+				}
+			    } else {
+				if { $ipi_channel_mask_warnings == 1 } {
+				    set ipi_channel_mask_warnings 0
+				    puts "WARNING: IPI channel 5 is not enabled, skipping activation of\n\
+				          \r         default subsystem. This may cause runtime issues if PM API is used.\n\
+					  \r         Please enable IPI channel 5 in Vivado design to activate\n\
+					  \r         subsystem. Further warnings will be suppressed"
+				}
+			    }
+			    setcurtarget $ctx
+			    break
+			}
+		    }
+		}
+	    }
+
 	    ::tcf::send_command $chan XilinxReset reset $fmt e [list $ctx $type $arg]
 
 	    # Wait for JTAG device to become active incase reset
@@ -6168,6 +6310,13 @@ RETURNS {
 SYNOPSIS {
     rst [options]
         Reset the active target.
+}
+NOTE {
+    For Versal devices, default subsystem is activated thru IPI channel 5,
+    before triggering the processor reset. This is needed since PLM doesn't
+    activate the subsystem when PS elfs are not part of the PDI. If IPI channel
+    is not enabled in Vivado design, subsystem cannot be activated. This will
+    cause runtime issues if PM API are used.
 }
 OPTIONS {
     -processor
@@ -6249,13 +6398,9 @@ RETURNS {
 	variable pmccmds
 
 	# PLM commands
-	dict set pmccmds mask_write [dict create cmd 0x040107 args {addr mask value}]
-	dict set pmccmds mask_poll [dict create cmd 0x050106 args {addr mask expected-value time-out}]
-	dict set pmccmds write [dict create cmd 0x030108 args {addr value}]
-	dict set pmccmds delay [dict create cmd 0x010104 args {delay}]
-	#dict set pmccmds dma_write [dict create cmd 0xff0105 args {addr <data>} nargs -1]
-	dict set pmccmds dma_xfer [dict create cmd 0x060109 args {src-addr dest-addr len params}]
-	dict set pmccmds set [dict create cmd 0x04010C args {addr len value}]
+	dict set pmccmds features [dict create cmd 0x1010100 args {api-id} resp {status}]
+	dict set pmccmds get_device_id [dict create cmd 0x1000112 args {} resp {status idcode ext-idcode}]
+	dict set pmccmds get_board [dict create cmd 0x1030115 args {addr max-size} resp {status response-length}]
 
 	# PM commands
 	dict set pmccmds request_device [dict create cmd 0x04020D args {node-id capabilities qos ack-type}]
@@ -6296,7 +6441,7 @@ RETURNS {
 	dict set pmccmds force_power_down [dict create cmd 0x020208 args {node-id ack-type}]
 	dict set pmccmds system_shutdown [dict create cmd 0x02020C args {shutdown-type sub-type}]
 
-	# Generic command to allow users to trigger any command
+	# Generic command to allow users to trigger any other commands
 	dict set pmccmds generic [dict create]
     }
 
@@ -6305,8 +6450,12 @@ RETURNS {
     }
 
     proc ipi { args } {
+	variable pmccmds
+
 	set options {
-	    {resp "response to ipi command" {args 1}}
+	    {response-list "ipi response list" {args 1}}
+	    {response-size "ipi response size in words" {args 1}}
+	    {timeout "timeout waiting for command to finish" {default 1000 args 1}}
 	}
 	array set params [::xsdb::get_options args $options 0]
 
@@ -6314,30 +6463,51 @@ RETURNS {
 	set args [lrange $args 1 end]
 	set ipi0_mid 0xff300050
 	set ipi0_trig 0xff330000
+	set ipi0_obs 0xff330004
 	set ipi0_pmc_buf 0xff3f0440
 	set ipi0_pmc_resp 0xff3f0460
 	set dap_smid 0x240
 
 	mwr -force [expr $ipi0_mid + ($ipi * 8)] $dap_smid
-	set base [expr $ipi0_pmc_buf + ($ipi * 0x200)]
-	set size [llength $args]
-	set chunk_size 8
-	set count 0
-	while { $count < $size } {
-	    if { $size < $count + $chunk_size } {
-		set chunk_size [expr $size - $count]
-	    }
-	    mwr -force $base [lrange $args $count [expr $count + $chunk_size - 1]]
-	    mwr -force [expr $ipi0_trig + (0x10000 * $ipi)] 0x2
-	    incr count $chunk_size
+
+	if { ([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
+	    error "previous ipi request is pending"
 	}
+
+	if { [llength $args] > 8 } {
+	    error "ipi buffer overflow, max buffer size is 8"
+	}
+	mwr -force [expr $ipi0_pmc_buf + ($ipi * 0x200)] $args
+	mwr -force [expr $ipi0_trig + (0x10000 * $ipi)] 0x2
+
+	set is_reset 0
+	dict for {name data} $pmccmds {
+	    if { $name == "reset_assert"  && [dict get $data cmd] == [lindex $args 0] } {
+		set is_reset 1
+		break
+	    }
+	}
+
+	# Check for ACK only if the command is not reset_assert
+	if { $is_reset == 0 } {
+	    set start [clock milliseconds]
+	    while { ([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
+		set end [clock milliseconds]
+		if { $end - $start > $params(timeout) } {
+		    error "timeout waiting for request to be acknowledged"
+		}
+	    }
+	}
+
 	set result ""
-	if { [info exists params(resp)] } {
-	    set count [llength $params(resp)]
+	if { [info exists params(response-list)] } {
+	    set count [llength $params(response-list)]
 	    set values [mrd -value [expr $ipi0_pmc_resp + ($ipi * 0x200)] $count]
 	    for {set i 0} {$i < $count} {incr i} {
-		append result [format "  %-30s : %x\n" [lindex $params(resp) $i] [lindex $values $i]]
+		append result [format "  %-30s : 0x%x\n" [lindex $params(response-list) $i] [lindex $values $i]]
 	    }
+	} elseif { [info exists params(response-size)] } {
+	    set result [mrd -value [expr $ipi0_pmc_resp + ($ipi * 0x200)] $params(response-size)]
 	}
 	return $result
     }
@@ -6375,47 +6545,33 @@ RETURNS {
 	if { [dict exists $pmccmds $subcmd] } {
 	    set args [lrange $args 1 end]
 	    if { $subcmd == "generic" } {
+		set options {
+		    {response-size "ipi command response size in words" {args 1}}
+		}
+		array set params1 [::xsdb::get_options args $options 0]
+
 		if { [llength $args] > 8 } {
 		    error "commands with payload > 32 bytes cannot be supported through IPI"
 		}
-		return [ipi $params(ipi) {*}$args]
+		if { [info exists params1(response-size)] } {
+		    return [ipi -response-size $params1(response-size) $params(ipi) {*}$args]
+		} else {
+		    return [ipi $params(ipi) {*}$args]
+		}
 	    }
 	    if { [dict_get_safe $pmccmds $subcmd nargs] != -1 && [llength [dict get $pmccmds $subcmd args]] != [llength $args] } {
 		error "wrong # of args: should be \"pmc $subcmd [dict get $pmccmds $subcmd args]\""
 	    }
 	    switch -- $subcmd {
-		"mask_write" -
-		"mask_poll" -
-		"set" -
-		"write" {
+		"get_board" {
 		    set addr [lindex $args 0]
 		    set args [lrange $args 1 end]
 		    set args [linsert $args 0 {*}[split_addr $addr]]
 		}
-		"dma_write" {
-		    set addr [lindex $args 0]
-		    set args [lrange $args 1 end]
-		    set len [llength $args]
-		    if { $len == 0 } {
-			error "wrong # of args: should be \"pmc $subcmd [dict get $pmccmds $subcmd args]\""
-		    }
-		    set args [linsert $args 0 $len]
-		    set args [linsert $args 1 {*}[split_addr $addr]]
-		}
-		"dma_xfer" {
-		    set src [lindex $args 0]
-		    set dest [lindex $args 1]
-		    set args [lrange $args 2 end]
-		    set args [linsert $args 0 {*}[split_addr $src]]
-		    set args [linsert $args 2 {*}[split_addr $dest]]
-		}
-		"request_wakeup" {
-		    set args [lreplace $args 1 1 {*}[split_addr [lindex $args 1]]]
-		}
 	    }
 	    set cmd [dict get $pmccmds $subcmd cmd]
 	    if { [dict exists $pmccmds $subcmd resp] } {
-		return [ipi -resp [dict get $pmccmds $subcmd resp] $params(ipi) $cmd {*}$args]
+		return [ipi -response-list [dict get $pmccmds $subcmd resp] $params(ipi) $cmd {*}$args]
 	    } else {
 		return [ipi $params(ipi) $cmd {*}$args]
 	    }
@@ -6426,22 +6582,20 @@ RETURNS {
 	    error "bad option \"[lindex $args 0]\": must be [join $subcmd {, }]"
 	}
     }
-    #namespace export pmc
-    setcmdmeta ::xsdb::pmc categories {pmc}
-    setcmdmeta ::xsdb::pmc brief {IPI commands to PMC.}
-    setcmdmeta ::xsdb::pmc description {
+    namespace export pmc
+    setcmdmeta pmc categories {ipi}
+    setcmdmeta pmc brief {IPI commands to PMC.}
+    setcmdmeta pmc description {
 SYNOPSIS {
     pmc [options] <command> <data>
         Trigger IPI command specified by <command> to Versal PMC. <data> is one
         or more arguments to the <command>.
 
         Supported IPI commands are:
-            delay <timeout in usec>
-            dma_xfer <src-addr> <dest-addr> <len> <params>
-            mask_write <addr> <mask> <value>
-            mask_poll <addr> <mask> <expacted-value> <timeout in usec>
-            write <addr> <data>
-            set <addr> <len> <value>
+            features <api-id>
+            get_device_id
+            get_board <addr max-size>
+
             request_device <node-id> <capabilities> <qos> <ack-type>
             release_device <node-id>
             set_requirement <node-id> <capabilities> <qos> <ack-type>
@@ -6484,10 +6638,13 @@ SYNOPSIS {
         Refer to CDO specification for more details about each command.
 
         Apart from these commands, a generic command is also supported.
-            generic <command> <args>
-        <command> should be numeric value of the actual PMC command, for example
-        0x060109 for DMA transfer. <args> should be the arguments corresponding
+            generic [-response-size <num>] <command> <args>
+        <command> should be numeric value of the actual CDO command, for example
+        0x1030115 for get_board. <args> should be the arguments corresponding
         to that command.
+        If the command is expected to return a response, then -response-size
+        should specify the number of words the command would return. This data
+        is returned as the command result.
 }
 OPTIONS {
     -ipi
@@ -6497,16 +6654,325 @@ OPTIONS {
         are triggered through this command.
 }
 EXAMPLE {
-    pmc mask_write 0xffff0000 0x1 0x1
-        Clear bit 0 in the value at address 0xffff0000, and write the modified
-        value back to 0xffff0000.
+    pmc get_board 0xffff0000 0x100
+        Write the board details to address 0xffff0000. Max buffer size is 256
+        bytes. The result of the command is status and the response length.
 
-    pmc generic 0x060109 0xffff0000 0xffff0400 0x100
-        Initiate a DMA transfer of 0x100 words from 0xffff0000 to 0xffff0400.
+    pmc generic -response-size 2 0x1030115 0xffff0000 0x100
+        Same as previous example, but use generic command instead of get_board.
 }
 RETURNS {
     Nothing, if IPI command is trigered successfully.
     Error string, if IPI command cannot be triggered.
+}
+}
+
+    proc check_if_plm_log_supported {} {
+	set features_cmd 0x010100
+	set ret [pmc generic -response-size 2 $features_cmd 19]
+	if { [lindex $ret 0] != 0 || [lindex $ret 1] != 0 } {
+	    error "event logging is not supported by this version of PLM"
+	}
+    }
+
+    proc plm {args} {
+	set options {
+	    {help "command help"}
+	}
+	array set params [::xsdb::get_options args $options 0]
+
+	if { $params(help) } {
+	    return [help [lindex [info level 0] 0]]
+	}
+
+	if { [llength $args] == 0 } {
+	    error "wrong # of args: should be \"process \[sub command\]\""
+	}
+
+	set subcmds [list "copy-debug-log" "set-debug-log" "log" "set-log-level"]
+	set subcmd [lsearch -all -inline -glob $subcmds "[lindex $args 0]*"]
+	if { [llength $subcmd] > 1 && [lsearch -all -inline -glob $subcmds [lindex $args 0]] != "" } {
+	    set subcmd [lsearch -all -inline -glob $subcmds [lindex $args 0]]
+	}
+	set args [lrange $args 1 end]
+	set use_rtca 0
+	set log_cmd 0x040113
+	set rtca_addr 0xf2014000
+	if { [format 0x%x [mrd -force -value $rtca_addr]] == "0x41435452" } {
+	    set use_rtca 1
+	}
+
+	switch -- $subcmd {
+	    "set-log-level" {
+		set options {
+		    {help "command help" }
+		}
+		array set params1 [::xsdb::get_options args $options 0]
+		if { $params1(help) } {
+		    return [help [lindex [split [lindex [info level 0] 0] ::] end] \
+			    [lindex [split [lindex [info level 0] 1] ::] end]]
+		}
+		check_if_plm_log_supported
+		if { [llength $args] != 1 } {
+		    error "wrong # of args: should be \"plm set-log-level <level>\""
+		}
+		set level [lindex $args 0]
+		checkint $level
+		if { $level < 0 || $level > 4} {
+		    error "invalid set-log-level: must be 1-4"
+		}
+		pmc generic $log_cmd 1 $level 0 0
+	    }
+	    "set-debug-log" {
+		set options {
+		    {help "command help" }
+		}
+		array set params1 [::xsdb::get_options args $options 0]
+		if { $params1(help) } {
+		    return [help [lindex [split [lindex [info level 0] 0] ::] end] \
+			    [lindex [split [lindex [info level 0] 1] ::] end]]
+		}
+		check_if_plm_log_supported
+		if { [llength $args] != 2 } {
+		    error "wrong # of args: should be \"plm set-debug-log <addr> <size>\""
+		}
+		set addr [lindex $args 0]
+		set size [lindex $args 1]
+		checkint $addr
+		checkint $size
+		set addr_lo [expr $addr & 0xffffffff]
+		set addr_hi [expr ($addr >> 32) & 0xffffffff]
+		pmc generic $log_cmd 2 $addr_hi $addr_lo $size
+	    }
+	    "copy-debug-log" {
+		set options {
+		    {help "command help" }
+		}
+		array set params1 [::xsdb::get_options args $options 0]
+		if { $params1(help) } {
+		    return [help [lindex [split [lindex [info level 0] 0] ::] end] \
+			    [lindex [split [lindex [info level 0] 1] ::] end]]
+		}
+		check_if_plm_log_supported
+		if { [llength $args] != 1 } {
+		    error "wrong # of args: should be \"plm copy-debug-log <addr>\""
+		}
+		set addr [lindex $args 0]
+		checkint $addr
+		set addr_lo [expr $addr & 0xffffffff]
+		set addr_hi [expr ($addr >> 32) & 0xffffffff]
+		pmc generic $log_cmd 3 $addr_hi $addr_lo 0
+	    }
+	    "log" {
+		set options {
+		    {handle "file handle" {default stdout args 1}}
+		    {log-mem-addr "log address" {args 1}}
+		    {log-size "log size in bytes" {args 1}}
+		    {skip-rtca "skip using RTCA"}
+		    {help "command help" }
+		}
+		array set params1 [::xsdb::get_options args $options 0]
+		if { $params1(help) } {
+		    return [help [lindex [split [lindex [info level 0] 0] ::] end] \
+			    [lindex [split [lindex [info level 0] 1] ::] end]]
+		}
+		set log ""
+		set def_addr 0xf2019000
+		set def_size 1024
+		set use_defaults 0
+		set wrapped_addr 0
+		set wrapped_len 0
+		if { ![info exists params1(log-mem-addr)] && ![info exists params1(log-size)] } {
+			if { $use_rtca && !$params1(skip-rtca) } {
+			    set addr [format 0x%lx [expr [mrd -force -value [expr $rtca_addr + 0x10]] | [expr [mrd -force -value [expr $rtca_addr + 0x14]] << 32]]]
+			    set size [format 0x%x [expr [mrd -force -value [expr $rtca_addr + 0x18]] / 4]]
+			    set offset [expr [format 0x%x [mrd -force -value [expr $rtca_addr + 0x1c]]] & 0x7fffffff]
+			    if { ($addr == 0xdeadbeef) || ([expr $addr >> 32] == 0xdeadbeef) || ($offset == 0xdeadbeef) } {
+			        set use_defaults 1
+			    }
+			    set len [expr ($offset & 0x7fffffff) - 1]
+			    set wrapped [expr $offset & 0x80000000]
+			    if { $wrapped != 0 } {
+			        set wrapped_addr $addr
+			        set wrapped_len [expr $len - 1]
+			        set addr [expr $addr + $len + 1]
+			        set len [expr $size - $len - 1]
+			    }
+			} else {
+			    set ret {}
+			    if { [catch {
+			    check_if_plm_log_supported
+			    set ret [pmc generic -response-size 6 $log_cmd 4 0 0 0]
+			    } msg] } {
+			    if { $msg == "previous ipi request is pending" || $msg == "timeout waiting for request to be acknowledged" } {
+				    set use_defaults 1
+			    } else {
+				    error $msg
+			    }
+			    } elseif { [lindex $ret 0] != 0 } {
+				    set use_defaults 1
+			    }
+
+			    if { $use_defaults == 0 } {
+			        set addr [format 0x%lx [expr ([lindex $ret 1] << 32) | [lindex $ret 2]]]
+			        set len [lindex $ret 3]
+			        if { $len == 0 } {
+				        set use_defaults 1
+			        }
+			    }
+		    }
+		} else {
+		    if { [info exists params1(log-mem-addr)] } {
+		        set addr $params1(log-mem-addr)
+		    } else {
+		        set addr $def_addr
+		    }
+		    if { [info exists params1(log-size)] } {
+		        set len $params1(log-size)
+		    } else {
+		        set len $def_size
+		    }
+		}
+		if { $use_defaults } {
+		    set addr $def_addr
+		    set len $def_size
+		    puts "WARNING: cannot retrive log buffer information. Using default address 0xf2019000\n\
+			      \r         and size 1024. Use -log-mem-addr or -log-size to change default values"
+		}
+		foreach b [mrd -force -size b -value $addr $len] {
+		    append log [format %c $b]
+		}
+		if { $wrapped_addr != 0 } {
+		    foreach b [mrd -force -size b -value $wrapped_addr $wrapped_len] {
+			    append log [format %c $b]
+		    }
+		}
+		puts $params1(handle) $log
+	    }
+	    default {
+		if { $subcmd == "" } {
+		    set subcmd $subcmds
+		}
+		error "bad option \"[lindex $args 0]\": must be [join $subcmd {, }]"
+	    }
+	}
+    }
+    namespace export plm
+    ::xsdb::setcmdmeta plm categories {ipi}
+    ::xsdb::setcmdmeta plm brief {PLM logging}
+    ::xsdb::setcmdmeta plm description {
+SYNOPSIS {
+    plm <sub-command> [options]
+        Configure PLM log-level/log-memory, or copy/retrieve PLM log, based on
+        <sub-command> specified.
+        Following sub-commands are supported.
+            copy-debug-log - Copy PLM debug log to user memory.
+            set-debug-log  - Configure memory for PLM debug log.
+            set-log-level  - Configure PLM log level.
+            log            - Retrieve PLM debug log.
+        Type "help" followed by "plm sub-command", or "plm sub-command" followed
+        by "-help" for more details.
+}
+OPTIONS {
+    Depends on the sub-command. Please refer to sub-command help for details.
+}
+RETURNS {
+    Depends on the sub-command. Please refer to sub-command help for details.
+}
+EXAMPLE {
+    Please refer to sub-command help for examples.
+}
+SUBCMDS {
+    copy-debug-log set-debug-log set-log-level log
+}
+}
+
+    ::xsdb::setcmdmeta {plm copy-debug-log} brief {Copy PLM debug log}
+    ::xsdb::setcmdmeta {plm copy-debug-log} description {
+SYNOPSIS {
+    plm copy-debug-log <addr>
+        Copy PLM debug log from debug log buffer to user memory specified by
+        <addr>.
+}
+RETURNS {
+    Nothing, if successful. Error, otherwise.
+}
+EXAMPLE {
+    plm copy-debug-log 0x0
+        Copy PLM debug log from the default log buffer to address 0x0.
+}
+}
+
+    ::xsdb::setcmdmeta {plm set-debug-log} brief {Configure PLM debug log memory}
+    ::xsdb::setcmdmeta {plm set-debug-log} description {
+SYNOPSIS {
+    plm set-debug-log <addr> <size>
+        Specify the address and size of the memory which should be used for PLM
+        debug log. By default, PMC RAM is used for PLM debug log.
+}
+RETURNS {
+    Nothing, if successful. Error, otherwise.
+}
+EXAMPLE {
+    plm set-debug-log 0x0 0x4000
+        Use the memory 0x0 - 0x3fff for PLM debug log.
+}
+}
+
+    ::xsdb::setcmdmeta {plm set-log-level} brief {Configure PLM log level}
+    ::xsdb::setcmdmeta {plm set-log-level} description {
+SYNOPSIS {
+    plm set-log-level <level>
+        Configure the PLM log level. This can be less than or equal to the
+        level set during the compile time.
+        The following levels are supported.
+            0x1 - Unconditional messages (DEBUG_PRINT_ALWAYS)
+            0x2 - General debug messages (DEBUG_GENERAL)
+            0x3 - More debug information (DEBUG_INFO)
+            0x4 - Detailed debug information (DEBUG_DETAILED)
+}
+RETURNS {
+    Nothing, if successful. Error, otherwise.
+}
+EXAMPLE {
+    plm set-log-level 0x1
+        Configure the log level to 1.
+}
+}
+
+    ::xsdb::setcmdmeta {plm log} brief {Retrieve the PLM log}
+    ::xsdb::setcmdmeta {plm log} description {
+SYNOPSIS {
+    plm log [options]
+        Retrieve the PLM log, and print it on the console, or a channel.
+}
+OPTIONS {
+    -handle <handle>
+        Specify the file handle to which the data should be redirected.
+        If no file handle is given, data is printed on stdout.
+
+    -log-mem-addr <addr>
+        Specify the memory address from which the PLM log should be retrieved.
+        By default, the address and log size are obtained by triggerring IPI
+        commands to PLM. If PLM doesn't respond to IPI commands, default address
+        0xf2019000 is used. This option can be used to change default address.
+        If either memory address or log size is specified, then the address and
+        size are not retrieved from PLM. If only one of address or size options
+        is specified, default value is used for the other option. See below for
+        description about log size.
+
+    -log-size <size in bytes>
+        Specify the log buffer size. If this option is not specified, then the
+        default size of 1024 bytes is used, only when the log memory information
+        cannot be retrieved from PLM.
+}
+RETURNS {
+    Nothing, if successful. Error, otherwise.
+}
+EXAMPLE {
+    set fp [open test.log r]
+    plm log -handle $fp
+        Retrieve PLM debug log and write it to test.log.
 }
 }
 
@@ -7239,6 +7705,7 @@ RETURNS {
 	    {meta-data "meta data for advanced properties" {default {} args 1}}
 	    {target-id "use specified target-id" {args 1}}
 	    {skip-on-step "skip on step" {default 0 args 1}}
+	    {action "trigger action" {args 1}}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options 0]
@@ -7363,6 +7830,9 @@ RETURNS {
 	dict set bpfmttable $id [dict get $fmt]
 	dict set bptable $id [dict get $data]
 	dict set bptable $id show_status 1
+	if { [info exists params(action)] } {
+	    dict set bptable $id script $params(action)
+	}
 	return $id
     }
     namespace export bpadd
@@ -8207,6 +8677,7 @@ RETURNS {
 	set a9_proc_index 0
 	set r5_proc_index 0
 	set a53_proc_index 0
+	set a72_proc_index 0
 
 	if { [dict exists $designtable $hw map] } {
 	    set design_map [dict get $designtable $hw map]
@@ -8326,6 +8797,10 @@ RETURNS {
 		    "psu_cortexa53" {
 			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A53" bscan "" index $a53_proc_index]
 			incr a53_proc_index
+		    }
+		    "psv_cortexa72" {
+			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A72" bscan "" index $a72_proc_index]
+			incr a72_proc_index
 		    }
 		}
 	    }
@@ -8546,6 +9021,87 @@ EXAMPLE {
     targets -filter {name =~ "xc7z045"}; loadhw design.xsa
         Load the HW design named design.hdf and set memory map for all the
         child processors for which xc7z045 is the parent.
+}
+}
+
+    proc loadipxact { args } {
+	variable ipxactfiles
+	set options {
+	    {clear "clear xml file"}
+	    {list "list xml file loaded"}
+	    {help "command help"}
+	}
+	array set params [::xsdb::get_options args $options 0]
+
+	if { $params(help) } {
+	    return [help [lindex [info level 0] 0]]
+	}
+
+	set chan [getcurchan]
+	set ctx [getcurtarget]
+
+	if { $params(clear) } {
+	    tcf send_command $chan Registers parseIPXACT sB e [list $ctx ""]
+	    set ipxactfiles [dict remove $ipxactfiles $ctx]
+	    return
+	} elseif { $params(list) } {
+	    set xml_file [dict_get_safe $ipxactfiles $ctx]
+	    if { $xml_file == "" } {
+		return "no ipxact files loaded for the current target"
+	    }
+	    return $xml_file
+	} elseif { [llength $args] != 1 } {
+	    error "wrong # args: should be \"loadipxact \[options\]\" or \"loadipxact \[xml-file\]\""
+	}
+	set fn [lindex $args 0]
+	set size [file size $fn]
+	set fp [open $fn "r"]
+	set buf [read $fp $size]
+	close $fp
+	tcf send_command $chan Registers parseIPXACT sB e [list $ctx $buf]
+	dict set ipxactfiles $ctx [file normalize $fn]
+	return
+    }
+    namespace export loadipxact
+    setcmdmeta loadipxact categories {miscellaneous}
+    setcmdmeta loadipxact brief {Load registers definitions from ipxact file}
+    setcmdmeta loadipxact description {
+SYNOPSIS {
+    loadipxact [options] [ipxact-xml]
+        Load memory mapped register definitions from a ipxact-xml file, or clear
+        previously loaded definitions and return to built-in definitions, or
+        return the xml file that is currently loaded.
+}
+OPTIONS {
+    -clear
+        Clear definitions loaded from ipxact file and return to built-in
+        definitions.
+
+    -list
+        Return the ipxact file that is currently loaded.
+}
+RETURNS {
+    Nothing, if the ipxact file is loaded, or previously loaded definitions are
+    cleared sucessfully. Error string, if load/clear failed.
+    xml file path if -list option is used, and xml file is previously loaded.
+}
+EXAMPLE {
+    loadipxact <xml-file>
+        Load register definitions from <xml-file>. This file should be in ipxact
+        format.
+
+    loadipxact -clear
+        Clear previously loaded register definitions from a xml file, and return
+        to built-in definitions.
+
+    loadipxact -list
+        Return the xml file that is currently loaded.
+}
+NOTE {
+    Select a target that supports physical memory accesses, to load memory
+    mapped register definitions. For example, APU, RPU, PSU and Versal targets
+    support physical memory accesses. Processor cores (A9, R5, A53, A72, etc.)
+    support virtual memory acceses.
 }
 }
 
@@ -10022,12 +10578,16 @@ SYNOPSIS {
     backtrace
         Return stack trace for current target.  Target must be
         stopped.  Use debug information for best result.
+        'bt' is alias for backtrace and can be used interchangeably.
 }
 RETURNS {
     Stack Trace, if successful.
     Error string, if Stack Trace cannot be read from the target.
 }
 }
+setcmdmeta bt categories {running}
+setcmdmeta bt brief {Stack back trace.}
+setcmdmeta bt description [dict get $::xsdb::command_metadata backtrace description]
 
     proc get_force_mem_accesses {} {
 	variable force_mem_accesses
@@ -11092,10 +11652,20 @@ OPTIONS {
         Stop and output trace.
 
     -con
+        Output trace after resuming execution of active target until a
+        breakpoint is hit. Atleast one breakpoint or watchpoint must be
+        set to use this option.
+        This option is only available with embedded trace.
+
     -stp
+        Output trace after resuming execution of the active target until
+        control reaches instruction that belongs to different line of
+        source code.
+
     -nxt
-        Execute the command and output trace. The -con option is only
-        available with embedded trace.
+        Output trace after resuming execution of the active target until
+        control reaches instruction that belongs to a different line of
+        source code, but runs any functions called at full speed.
 
     -out <filename>
         Output trace data to a file.
@@ -11114,8 +11684,12 @@ OPTIONS {
         Set to enable capture of load and get instruction new data value.
 
     -low <addr>
+        Set low address of the external trace buffer address range.
+        The address range must indicate an unused accessible memory space.
+        Only used with external trace.
+
     -high <addr>
-        Set low and high address of the external trace buffer address range.
+        Set high address of the external trace buffer address range.
         The address range must indicate an unused accessible memory space.
         Only used with external trace.
 
