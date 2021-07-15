@@ -6,4 +6,4 @@ https://gitenterprise.xilinx.com/Yocto/meta-petalinux/tree/2020/recipes-utils/la
 
 The Labtool binaries (hw_Server, xsdb) is covered under "Permissive Binary Only" license: LICENSE_PBO
 
-The xsdb TCL scripts are covered under "Xilinx proprietary" License: LICENSE_TCL
+The xsdb TCL scripts are covered under "Xilinx MIT" License: LICENSE_TCL
