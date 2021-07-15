@@ -1,26 +1,24 @@
-#######################################################################
-# Copyright (c) 2018 Xilinx, Inc.  All rights reserved.
+##################################################################################
+# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# SPDX-License-Identifier: MIT
 #
-# This   document  contains  proprietary information  which   is
-# protected by  copyright. All rights  are reserved. No  part of
-# this  document may be photocopied, reproduced or translated to
-# another  program  language  without  prior written  consent of
-# XILINX Inc., San Jose, CA. 95124
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is furnished
+# to do so, subject to the following conditions:
 #
-# Xilinx, Inc.
-# XILINX IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS" AS A
-# COURTESY TO YOU.  BY PROVIDING THIS DESIGN, CODE, OR INFORMATION AS
-# ONE POSSIBLE   IMPLEMENTATION OF THIS FEATURE, APPLICATION OR
-# STANDARD, XILINX IS MAKING NO REPRESENTATION THAT THIS IMPLEMENTATION
-# IS FREE FROM ANY CLAIMS OF INFRINGEMENT, AND YOU ARE RESPONSIBLE
-# FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE FOR YOUR IMPLEMENTATION.
-# XILINX EXPRESSLY DISCLAIMS ANY WARRANTY WHATSOEVER WITH RESPECT TO
-# THE ADEQUACY OF THE IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO
-# ANY WARRANTIES OR REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE
-# FROM CLAIMS OF INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY
-# AND FITNESS FOR A PARTICULAR PURPOSE.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-#######################################################################
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH
+# THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#####################################################################################
 
 namespace eval ::xsdb::mbtrace_dis {
     variable version 0.1
