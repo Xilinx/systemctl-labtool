@@ -1,10 +1,5 @@
 #!/bin/sh 
 
-export XILINX_VITIS=/usr/local/xilinx_vitis
-export TCLLIBPATH=/usr/local/xilinx_vitis
-export TCL_LIBRARY=/usr/local/lib/tcl8.5
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib
-
 DB_UIO=`ls -lt /sys/class/uio | grep debug_bridge | awk '{print $9}'`
 /usr/local/bin/hw_server 1>/dev/NULL &
 /usr/local/bin/xvc_server -d $DB_UIO 1>/dev/NULL &
