@@ -915,7 +915,7 @@ EXAMPLE {
 	if { ![dict exists $value idcode] } {
 	    error "missing idcode property"
 	}
-	::tcf::send_command $chan JtagDevice setProperties "o{name s bitstream_revisions s i}" e [list $value]
+	::tcf::send_command $chan JtagDevice setProperties "o{name s arch_name s bitstream_revisions s i}" e [list $value]
     }
     namespace export device_properties
     ::xsdb::setcmdmeta {jtag device_properties} categories {jtag}

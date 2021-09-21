@@ -31,9 +31,17 @@ namespace eval ::streamreader {
 	    puts "internal error: get_streamreader_table called with unknown name: $name"
 	    return
 	}
+	if { [dict get $instances $name unset_pending] } {
+	    dict unset instances $name
+	    return
+	}
 	set sock [dict get $instances $name connectionid]
 	set sock_bufs [dict get $instances $name sock_bufs]
 	dict set instances $name sock_bufs {}
+	if { ![dict get $instances $name disconnecting] } {
+	    # don't clear the pending flag when user calls streamreader_handler
+	    dict set instances $name event_pending 0
+	}
 	stream_reader $name
 	return [dict create sock $sock sock_bufs $sock_bufs]
     }
@@ -46,6 +54,7 @@ namespace eval ::streamreader {
 	    return
 	}
 	dict set instances $name eos 1
+	dict set instances $name disconnecting 1
     }
 
     proc set_error {name error} {
@@ -88,6 +97,7 @@ namespace eval ::streamreader {
 		if { [llength [dict get $instances $name sock_bufs]] == 1 } {
 		    # send the buffer to client
 		    [dict get $instances $name ns]::eval_event [list ::xsdb::streamreader_handler $name]
+		    dict set instances $name event_pending 1
 		}
 	    }
 	    if { [llength [dict get $instances $name sock_bufs]] < 16 } {
@@ -130,7 +140,7 @@ namespace eval ::streamreader {
 	variable instance_id
 
 	set name "streamreader#$instance_id"
-	dict set instances $name [dict create name $name ns $ns chan $chan connectionid $sock TXStreamID $TXStreamID eos 0 stream_read_count 0 sock_bufs {}]
+	dict set instances $name [dict create name $name ns $ns chan $chan connectionid $sock TXStreamID $TXStreamID eos 0 event_pending 0 unset_pending 0 disconnecting 0 stream_read_count 0 sock_bufs {}]
 	incr instance_id
 	stream_reader $name
 	return $name
@@ -146,7 +156,15 @@ namespace eval ::streamreader {
 	if { [dict exists $instances $name error] } {
 	    set err [dict get $instances $name error]
 	}
-	dict unset instances $name
+	if { [dict get $instances $name event_pending] } {
+	    # In non-interactive mode, streamreader_handler posted by stream_read_done can be
+	    # in event queue, and executed after the user script is run. By that time, the
+	    # streamreader::delete can be called by the user script. Do not delete the instance
+	    # if the handler is pending and eos is set. delete it when the handler is called
+	    dict set instances $name unset_pending 1
+	} else {
+	    dict unset instances $name
+	}
 	return $err
     }
 }

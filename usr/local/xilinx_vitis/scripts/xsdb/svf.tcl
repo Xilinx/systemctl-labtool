@@ -25,7 +25,7 @@ package require xsdb::elf
 namespace eval ::xsdb::svf {
     variable version 0.1
     variable daps {}
-    variable commands {getapinfo abort dpread dpwrite apread apwrite memread memwrite run clear delete}
+    variable commands {getapinfo abort dpread dpwrite apread apwrite memread memwrite run clear delete reset}
     variable outfile ""
     variable scan_chain
     variable device_index 0
@@ -44,6 +44,7 @@ namespace eval ::xsdb::svf {
     # AP indices
     variable AHB 		0
     variable APB 		1
+    variable JTAG 		2
 
     # Base address for DBG & CTI registers
     variable A53_DBGBASE 	0x80410000
@@ -1121,6 +1122,108 @@ EXAMPLE {
 }
 
     #---------------------------------------------------------------------------------------#
+    # rst
+    # Reset System
+    #---------------------------------------------------------------------------------------#
+    proc rst { args } {
+	variable config_dict
+	variable arch
+	variable AHB
+	variable cpu_type
+
+	set options {
+	    {processor "processor reset"}
+	    {system "system reset"}
+	    {help "command help"}
+	}
+	array set params [::xsdb::get_options args $options 0]
+
+	set device_index [dict get $config_dict device_index]
+	set dapname "dap$device_index"
+	set cpu_index [dict get $config_dict cpu_index]
+
+	if { $params(help) } {
+	    return [help svf [lindex [split [lindex [info level 0] 0] ::] end]]
+	}
+
+	writesvf "// reset"
+	if { $params(processor) } {
+	    if { $cpu_type == "a53" } {
+		    set rst_ctrl [expr 1 << {$cpu_index + 10}]
+		    set rst_ctrl [expr $rst_ctrl | [expr 1 << 8]]
+		    set rst_ctrl [expr $rst_ctrl | [expr 1 << $cpu_index]]
+		    # Bootloop
+		    $dapname memwrite $AHB 0xffff0000 0x14000000
+		    # Activate reset
+		    $dapname memwrite $AHB 0xfd1a0104 $rst_ctrl
+		    # Write the reset address to RVBARADDR
+		    $dapname memwrite $AHB [expr {0xfd5c0040 + 8*$cpu_index}] 0xffff0000
+		    $dapname memwrite $AHB [expr {0xfd5c0044 + 8*$cpu_index}] 0x0
+		    # Clear reset
+		    set rst_ctrl [expr $rst_ctrl & ~[expr {0x1 << 8}]]
+		    set rst_ctrl [expr $rst_ctrl & ~[expr 1 << {$cpu_index + 10}]]
+		    set rst_ctrl [expr $rst_ctrl & ~[expr 1 << $cpu_index]]
+		    $dapname memwrite $AHB 0xfd1a0104 $rst_ctrl
+		    # Stop the core
+		    armv8_stop
+	    }
+	    if { $cpu_type == "r5" } {
+		    set r5_cpu_index [expr $cpu_index - 0x4]
+		    set rst_ctrl [expr 0x188fc0 | {0x1 << $r5_cpu_index}]
+		    # Bootloop
+		    $dapname memwrite $AHB 0xffff0000 0xeafffffe
+		    # Activate reset
+		    $dapname memwrite $AHB 0xff5e023c $rst_ctrl
+		    # Start from OCM after reset
+		    $dapname memwrite $AHB 0xff9a0100 0x5
+		    # Clear reset
+		    set rst_ctrl [expr $rst_ctrl & ~[expr {0x1 << $r5_cpu_index}]]
+		    $dapname memwrite $AHB 0xff5e023c $rst_ctrl
+		    # Stop the core
+		    armv7_stop
+	    }
+	    if { $cpu_type == "a9" } {
+		    set rst_ctrl [expr {0x1 << $cpu_index}]
+		    # Bootloop
+		    $dapname memwrite $AHB 0x0 0xeafffffe
+		    # Unlock SLCR
+		    $dapname memwrite $AHB 0xf8000008 0xdf0d
+		    # Activate reset
+		    $dapname memwrite $AHB 0xf8000244 $rst_ctrl
+		    # Stop clock
+		    $dapname memwrite $AHB 0xf8000244 0x11
+		    # Start clock
+		    $dapname memwrite $AHB 0xf8000244 0x10
+		    # Clear reset
+		    set rst_ctrl [expr $rst_ctrl & ~[expr {0x1 << $cpu_index}]]
+		    $dapname memwrite $AHB 0xf8000244 $rst_ctrl
+		    # Stop the core
+		    armv7_stop
+	    }
+	} else {
+	    $dapname reset
+	}
+	$dapname run
+    }
+    namespace export rst
+    ::xsdb::setcmdmeta {svf rst} categories {svf}
+    ::xsdb::setcmdmeta {svf rst} brief {Reset}
+    ::xsdb::setcmdmeta {svf rst} description {
+SYNOPSIS {
+    svf rst
+    System Reset
+}
+OPTIONS {
+    None
+}
+RETURNS {
+    If successful, this command returns nothing.
+    Otherwise it returns an error.
+}
+EXAMPLE {
+    svf rst
+}
+}
     # writesvf
     # Write to svf file
     #---------------------------------------------------------------------------------------#
@@ -1150,6 +1253,16 @@ EXAMPLE {
 	dict set aps 2 {idr 611713040 name JTAG-AP mem 0}
 	dict set daps $name aps $aps
 	return $aps
+    }
+
+    proc _cmd_reset {name args} {
+	variable daps
+	if { [llength $args] != 0 } {
+	    error "wrong # args: should be \"rst\""
+	}
+	dict with daps $name {
+	    lappend cmds [list RESET]
+	}
     }
 
     # Abort
@@ -1463,7 +1576,7 @@ EXAMPLE {
     }
 
     # AP Write
-    proc _run_apwrite {ap addr data} {
+    proc _run_apwrite {ap addr data {ignoretdo 0}} {
 	variable config_dict
 	upvar 1 ir ir
 	upvar 1 seq seq
@@ -1477,7 +1590,11 @@ EXAMPLE {
 	set resptype w
 	set svftdi [expr {($data << 3) | (($addr & 0xc) >> 1)}]
 	set svftdi [format %lx $svftdi]
-	writesvf "SDR 35 TDI ($svftdi) TDO (2) MASK(7);"
+	if {$ignoretdo} {
+	    writesvf "SDR 35 TDI ($svftdi);"
+	} else {
+	    writesvf "SDR 35 TDI ($svftdi) TDO (2) MASK(7);"
+	}
 	set delaytcks [dict get $config_dict delaytcks]
 	if { $delaytcks != 0 } {
 	    writesvf "RUNTEST $delaytcks TCK;"
@@ -1488,7 +1605,9 @@ EXAMPLE {
     proc _cmd_run {name args} {
 	variable daps
 	variable config_dict
+	variable cmd_dict
 	variable AHB
+	variable JTAG
 	variable arch
 	variable cpu_type
 	set cpu_index [dict get $config_dict cpu_index]
@@ -1501,6 +1620,7 @@ EXAMPLE {
 	    set err ""
 	    if { [catch {
 		set ir 15
+		set rst_cmd 0
 		set select 0xff0000ff
 		set ncmds [llength $cmds]
 		set complete 0
@@ -1659,6 +1779,23 @@ EXAMPLE {
 				    }
 				}
 			    }
+			    RESET {
+				_run_apwrite $JTAG 0x00 0x0 1
+				_run_apwrite $JTAG 0x04 0x1 1
+				_run_apwrite $JTAG 0x00 0xd 1
+				delay 500000
+				set open_cmd [dict get $cmd_dict $arch open]
+				if { $cpu_type == "r5" } {
+				    set open_cmd zynqmp_open
+				}
+				if { $open_cmd == "zynqmp_open"} {
+				    dict set config_dict linkdap 1
+				    eval {$open_cmd}
+				    dict set config_dict linkdap 0
+				}
+				eval {$open_cmd}
+				set rst_cmd 1
+			    }
 
 			    default {
 				error "invalid DAP command: $cmd"
@@ -1669,8 +1806,15 @@ EXAMPLE {
 		}
 		#Reading the CTRL/STAT and read buffer after every run
 		_run_set_dpacc
-		writesvf "SDR 35 TDI (3) TDO ($refval) MASK($refmask);"
-		writesvf "SDR 35 TDI (7) TDO (0) MASK(20);"
+		if {$rst_cmd} {
+			writesvf "SDR 35 TDI (3);"
+			writesvf "SDR 35 TDI (7);"
+			set rst_cmd 0
+		} else {
+			writesvf "SDR 35 TDI (3) TDO ($refval) MASK($refmask);"
+			writesvf "SDR 35 TDI (7) TDO (0) MASK(20);"
+		}
+
 	    } msg] } {
 		set err $msg
 	    }
@@ -1820,7 +1964,7 @@ EXAMPLE {
 
 	if { $linkdap } {
 	    set device_index [expr $device_index - 1]
-            write_header_trailer_regs $device_index
+	    write_header_trailer_regs $device_index
 	    writesvf "SIR 12 TDI (824);"
 	    writesvf "SDR 32 TDI (3);"
 	    writesvf "RUNTEST 10000 TCK;"
