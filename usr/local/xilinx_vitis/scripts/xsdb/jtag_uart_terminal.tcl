@@ -19,12 +19,6 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH
 # THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #####################################################################################
-##
-## jtag_uart_terminal.tcl
-##
-## JTAG-based Hyperterminal that works over XSDB and DCC/MDM UART
-##
-###############################################################################
 
 set xsdb_socket stdout
 

@@ -991,15 +991,15 @@ RETURNS {
 		return
 	    }
 	    list {
+		set options {
+		    {dict "returns the app list in tcl dict format"}
+		}
 		if { [lsearch $args "-help"] != -1 } {
 		    return [help [lindex [split [lindex [info level 0] 0] ::] end] \
 			    [lindex [split [lindex [info level 0] 1] ::] end]]
 		}
-
-		set params(dict) 0
-		if { [lsearch $args "-dict"] != -1 } {
-		    set params(dict) 1
-		} elseif { [llength $args] > 0 } {
+		array set params [::xsdb::get_options args $options 0]
+		if { [llength $args] > 0 } {
 		    error "Unexpected arguments: $args, should be \"app list\""
 		}
 
@@ -1013,20 +1013,31 @@ RETURNS {
 		}
 
 		set app_list {}
-		if { $params(dict) } {
-		    foreach item $projs {
-			set app_dict [dict create "Name" $item]
-			lappend app_list $app_dict
+		foreach item $projs {
+		    set chan [getsdkchan]
+		    set retval [lindex [xsdk_eval $chan "XSDx" "reportApp" "o{AppName s}" eA [list [dict create AppName $item ]]] 1]
+		    dict for {key value} $retval {
+			if { $key == "fsblpath" || $key == "Platform Path" } { continue }
+			if { $key == "Domain" } {
+			    dict set app_dict $item "domain" $value
+			    continue
+			}
+			dict set app_dict $item $key $value
 		    }
-		    return $app_list
 		}
-
-		set formatstr {%15s}
-		set border "[string repeat "=" 40]\n"
+		if { $params(dict) } {
+		    return $app_dict
+		}
+		set formatstr { %-15s %-20s %-15s }
+		set border "[string repeat "=" 55]\n"
 		set output $border
-		append output "     APPLICATION\n"
+		append output "[format $formatstr "NAME" "DOMAIN" "PLATFORM" ]\n"
 		append output $border
-		append output $projs
+		dict for {key value} $app_dict {
+		    dict with value {
+			append output "[format $formatstr "$key" $domain $platform]\n"
+		    }
+		}
 		return $output
 	    }
 	    remove {

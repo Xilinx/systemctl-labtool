@@ -2317,6 +2317,9 @@ namespace eval ::xsdb {
 	    }
 	    dict set props name $name
 
+	    dict set props parent_ctx $parent
+	    dict set props parent [dict_get_safe $parentprops name]
+
 	    if { [dict exists $rc HasState] } {
 		set state [dict get $data targets $ctx RunControl:state]
 		if { [lindex $state 0] == "" } {
@@ -6215,11 +6218,27 @@ RETURNS {
 		dict set arg clear-registers $params(clear-registers)
 	    } else {
 		if { $params(processor) +  $params(cores) != 0 && $reset_warnings == 1 && [info level] == 1 } {
-		    set reset_warnings 0
-		    puts "WARNING: If the reset is being triggered after powering on the device,\n\
-		          \r         write bootloop at reset vector address (0xffff0000), or use\n\
-			  \r         -clear-registers option, to avoid unpredictable behavior.\n\
-		          \r         Further warnings will be suppressed"
+		    set found 0
+		    set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:context]] 1]
+		    if { [dict_get_safe $rc CPUType] == "ARM" && [dict_get_safe $rc ARMType] != "Cortex-A9" } {
+			set found 1
+		    }
+		    if { [dict_get_safe $rc IsContainer] == 1 } {
+			foreach child [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:children]] 1] {
+			    set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $child RunControl:context]] 1]
+			    if { [dict_get_safe $rc CPUType] == "ARM" && [dict_get_safe $rc ARMType] != "Cortex-A9" } {
+				set found 1
+				break
+			    }
+			}
+		    }
+		    if { $found } {
+			set reset_warnings 0
+			puts "WARNING: If the reset is being triggered after powering on the device,\n\
+			      \r         write bootloop at reset vector address (0xffff0000), or use\n\
+			      \r         -clear-registers option, to avoid unpredictable behavior.\n\
+			      \r         Further warnings will be suppressed"
+		    }
 		}
 	    }
 	    switch -- $params(isa) {
@@ -6241,8 +6260,21 @@ RETURNS {
 	    }
 
 	    if { $activate_subsystem && !$params(skip-activate-subsystem) } {
+		set is_arm 0
 		set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:context]] 1]
 		if { [dict_get_safe $rc CPUType] == "ARM" } {
+		    set is_arm 1
+		}
+		if { [dict_get_safe $rc IsContainer] == 1 } {
+		    foreach child [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:children]] 1] {
+			set rc_child [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $child RunControl:context]] 1]
+			if { [dict_get_safe $rc_child CPUType] == "ARM" } {
+			    set is_arm 1
+			    break
+			}
+		    }
+		}
+		if { $is_arm } {
 		    while { [dict_get_safe $rc ParentID] != "" } {
 			set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan [dict get $rc ParentID] RunControl:context]] 1]
 			if { ![string compare -length [string length "Versal"] "Versal" [dict get $rc Name]] } {
@@ -6258,17 +6290,20 @@ RETURNS {
 			    setcurtarget [dict get $rc ID]
 			    set ipi5_status [expr [mrd -value 0xFF320014] & 0x80]
 			    if { $ipi5_status == 0 } {
-				set ret [pmc generic -response-size 1 0x10241 0x1c000000]
-				if { $ret != 0x0 && $ret != 0x01070000 } {
-				    error "Cannot activate default subsystem. PLM error code $ret"
+				if { [catch {set ret [pmc generic -response-size 1 0x10241 0x1c000000]} msg] || $ret != 0x0 && $ret != 0x01070000 } {
+				    if { $msg == "" } {
+					set msg $ret
+				    }
+				    puts "WARNING: Cannot activate default subsystem. This may cause runtime issues if PM\n\
+				          \r         API is used. PLM status: $msg"
 				}
 			    } else {
 				if { $ipi_channel_mask_warnings == 1 } {
 				    set ipi_channel_mask_warnings 0
-				    puts "WARNING: IPI channel 5 is not enabled, skipping activation of\n\
-				          \r         default subsystem. This may cause runtime issues if PM API is used.\n\
-					  \r         Please enable IPI channel 5 in Vivado design to activate\n\
-					  \r         subsystem. Further warnings will be suppressed"
+				    puts "WARNING: IPI channel 5 is not enabled, skipping activation of default subsystem.\n\
+				          \r         This may cause runtime issues if PM API is used. Please enable IPI\n\
+					  \r         channel 5 in Vivado design to activate default subsystem.\n\
+					  \r         Further warnings will be suppressed"
 				}
 			    }
 			    setcurtarget $ctx
@@ -6803,32 +6838,32 @@ RETURNS {
 			    set ret [pmc generic -response-size 6 $log_cmd 4 0 0 0]
 			    } msg] } {
 			    if { $msg == "previous ipi request is pending" || $msg == "timeout waiting for request to be acknowledged" } {
-				    set use_defaults 1
+			        set use_defaults 1
 			    } else {
-				    error $msg
+			        error $msg
 			    }
 			    } elseif { [lindex $ret 0] != 0 } {
-				    set use_defaults 1
+			        set use_defaults 1
 			    }
 
 			    if { $use_defaults == 0 } {
 			        set addr [format 0x%lx [expr ([lindex $ret 1] << 32) | [lindex $ret 2]]]
 			        set len [lindex $ret 3]
 			        if { $len == 0 } {
-				        set use_defaults 1
+			            set use_defaults 1
 			        }
 			    }
 		    }
 		} else {
 		    if { [info exists params1(log-mem-addr)] } {
-		        set addr $params1(log-mem-addr)
+			set addr $params1(log-mem-addr)
 		    } else {
-		        set addr $def_addr
+			set addr $def_addr
 		    }
 		    if { [info exists params1(log-size)] } {
-		        set len $params1(log-size)
+			set len $params1(log-size)
 		    } else {
-		        set len $def_size
+			set len $def_size
 		    }
 		}
 		if { $use_defaults } {
@@ -11748,7 +11783,7 @@ package require xsdb::gdbremote
 package require xsdb::svf
 package require xsdb::device
 
-catch {
+if { [catch {
     package require hsi
     package require hsi::utils
     namespace eval hsi {namespace import ::common::*}
@@ -11757,6 +11792,8 @@ catch {
     if { [string first "xsct" [file tail [info nameofexecutable]]] != -1 } {
 	namespace import ::hsi::utils::*
     }
+} msg] && [string first "xsct" [file tail [info nameofexecutable]]] != -1 } {
+    error "error loading hsi package: $msg"
 }
 
 
