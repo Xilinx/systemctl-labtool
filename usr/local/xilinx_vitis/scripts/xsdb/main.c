@@ -1,5 +1,5 @@
 /************************************************************************************************************
- * (c) Copyright 2012 - 2020 Xilinx, Inc. All rights reserved.
+ * (c) Copyright 2012 - 2022 Xilinx, Inc. All rights reserved.
  * 
  * This file contains confidential and proprietary information of Xilinx, Inc. and is protected under U.S. 
  * and international copyright and other intellectual property laws.
@@ -153,7 +153,7 @@ static void display_banner()
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"\n");
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"****** %s v%s\n", programName, RDI_VERSION);
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"  **** Build date : %s-%s\n", date_stamp, time_stamp);
-    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 1986-2020 Xilinx, Inc. All Rights Reserved.\n\n");
+    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.\n\n");
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"\n");
 }
 

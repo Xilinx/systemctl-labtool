@@ -84,19 +84,19 @@ namespace eval ::xsdb::gdbremote {
     ::xsdb::setcmdmeta {gdbremote connect} description {
 SYNOPSIS {
     gdbremote connect [options] server
-        Connect to a GDB remote server, for example qemu.
-        xrt_server is used to connect to remote GDB server.
+        Connect to a GDB remote server (for example, qemu).
+        xrt_server is used to connect to the remote GDB server.
 }
 OPTIONS {
     -architecture <name>
-        Specify default architecture is remote server does not provide it.
+        Specify default architecture if remote server does not provide it.
 }
 DESCRIPTION {
-    This command attempts to connect the GDB Remote Server.
+    This command attempts to connect the GDB remote server.
 }
 RETURNS {
     Nothing, if the connection is successful.
-    Error string, if the connection failed.
+    Error string, if the connection fails.
 }
 }
 
@@ -152,10 +152,10 @@ RETURNS {
     ::xsdb::setcmdmeta {gdbremote disconnect} description {
 SYNOPSIS {
     gdbremote disconnect [target-id]
-        Disconnect from GDB remote server, for example qemu.
+        Disconnect from GDB remote server (for example, qemu).
 }
 DESCRIPTION {
-    This command disconnects GDB Remote Server for current or specified target.
+    This command disconnects GDB remote server for current or specified target.
 }
 RETURNS {
     Nothing, if the connection is close.

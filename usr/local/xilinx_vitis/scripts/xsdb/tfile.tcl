@@ -62,14 +62,14 @@ namespace eval ::xsdb::tfile {
     }
     namespace export open
     ::xsdb::setcmdmeta {tfile open} categories {tfile}
-    ::xsdb::setcmdmeta {tfile open} brief {Open file}
+    ::xsdb::setcmdmeta {tfile open} brief {Open file.}
     ::xsdb::setcmdmeta {tfile open} description {
 SYNOPSIS {
     tfile open <path>
-        Open specified file
+        Open specified file.
 }
 RETURNS {
-    File handle
+    File handle.
 }
 }
 
@@ -98,11 +98,11 @@ RETURNS {
     }
     namespace export close
     ::xsdb::setcmdmeta {tfile close} categories {tfile}
-    ::xsdb::setcmdmeta {tfile close} brief {Close file handle}
+    ::xsdb::setcmdmeta {tfile close} brief {Close file handle.}
     ::xsdb::setcmdmeta {tfile close} description {
 SYNOPSIS {
     tfile close <handle>
-        Close specified file handle
+        Close specified file handle.
 }
 RETURNS {
 }
@@ -141,18 +141,18 @@ RETURNS {
     }
     namespace export read
     ::xsdb::setcmdmeta {tfile read} categories {tfile}
-    ::xsdb::setcmdmeta {tfile read} brief {Read file handle}
+    ::xsdb::setcmdmeta {tfile read} brief {Read file handle.}
     ::xsdb::setcmdmeta {tfile read} description {
 SYNOPSIS {
     tfile read <handle>
-        Read from specified file handle
+        Read from specified file handle.
 }
 OPTIONS {
     -offset <seek>
-        File offset to read from
+        File offset to read from.
 }
 RETURNS {
-    Read data
+    Read data.
 }
 }
 
@@ -189,15 +189,15 @@ RETURNS {
     }
     namespace export write
     ::xsdb::setcmdmeta {tfile write} categories {tfile}
-    ::xsdb::setcmdmeta {tfile write} brief {Write file handle}
+    ::xsdb::setcmdmeta {tfile write} brief {Write file handle.}
     ::xsdb::setcmdmeta {tfile write} description {
 SYNOPSIS {
     tfile write <handle>
-        Write to specified file handle
+        Write to specified file handle.
 }
 OPTIONS {
     -offset <seek>
-        File offset to write to
+        File offset to write to.
 }
 RETURNS {
 }
@@ -222,14 +222,14 @@ RETURNS {
     }
     namespace export stat
     ::xsdb::setcmdmeta {tfile stat} categories {tfile}
-    ::xsdb::setcmdmeta {tfile stat} brief {Get file attributes from path}
+    ::xsdb::setcmdmeta {tfile stat} brief {Get file attributes from path.}
     ::xsdb::setcmdmeta {tfile stat} description {
 SYNOPSIS {
     tfile stat <handle>
-        Get file attributes for <path>
+        Get file attributes for <path>.
 }
 RETURNS {
-    File attributes
+    File attributes.
 }
 }
 
@@ -252,14 +252,14 @@ RETURNS {
     }
     namespace export lstat
     ::xsdb::setcmdmeta {tfile lstat} categories {tfile}
-    ::xsdb::setcmdmeta {tfile lstat} brief {Get link file attributes from path}
+    ::xsdb::setcmdmeta {tfile lstat} brief {Get link file attributes from path.}
     ::xsdb::setcmdmeta {tfile lstat} description {
 SYNOPSIS {
     tfile lstat <path>
-        Get link file attributes for <path>
+        Get link file attributes for <path>.
 }
 RETURNS {
-    Link file attributes
+    Link file attributes.
 }
 }
 
@@ -286,14 +286,14 @@ RETURNS {
     }
     namespace export fstat
     ::xsdb::setcmdmeta {tfile fstat} categories {tfile}
-    ::xsdb::setcmdmeta {tfile fstat} brief {Get file attributes from handle}
+    ::xsdb::setcmdmeta {tfile fstat} brief {Get file attributes from handle.}
     ::xsdb::setcmdmeta {tfile fstat} description {
 SYNOPSIS {
     tfile fstat <handle>
-        Get file attributes for <handle>
+        Get file attributes for <handle>.
 }
 RETURNS {
-    File attributes
+    File attributes.
 }
 }
 
@@ -319,14 +319,14 @@ RETURNS {
     }
     namespace export setstat
     ::xsdb::setcmdmeta {tfile setstat} categories {tfile}
-    ::xsdb::setcmdmeta {tfile setstat} brief {Set file attributes for path}
+    ::xsdb::setcmdmeta {tfile setstat} brief {Set file attributes for path.}
     ::xsdb::setcmdmeta {tfile setstat} description {
 SYNOPSIS {
     tfile setstat <path> <attributes>
-        Set file attributes for <path>
+        Set file attributes for <path>.
 }
 RETURNS {
-    File attributes
+    File attributes.
 }
 }
 
@@ -352,14 +352,14 @@ RETURNS {
     }
     namespace export fsetstat
     ::xsdb::setcmdmeta {tfile fsetstat} categories {tfile}
-    ::xsdb::setcmdmeta {tfile fsetstat} brief {Set file attributes for handle}
+    ::xsdb::setcmdmeta {tfile fsetstat} brief {Set file attributes for handle.}
     ::xsdb::setcmdmeta {tfile fsetstat} description {
 SYNOPSIS {
     tfile fsetstat <handle> <attributes>
-        Set file attributes for <handle>
+        Set file attributes for <handle>.
 }
 RETURNS {
-    File attributes
+    File attributes.
 }
 }
 
@@ -383,11 +383,11 @@ RETURNS {
     }
     namespace export remove
     ::xsdb::setcmdmeta {tfile remove} categories {tfile}
-    ::xsdb::setcmdmeta {tfile remove} brief {Remove path}
+    ::xsdb::setcmdmeta {tfile remove} brief {Remove path.}
     ::xsdb::setcmdmeta {tfile remove} description {
 SYNOPSIS {
     tfile remove <path>
-        Remove <path>
+        Remove <path>.
 }
 RETURNS {
 }
@@ -413,11 +413,11 @@ RETURNS {
     }
     namespace export rmdir
     ::xsdb::setcmdmeta {tfile rmdir} categories {tfile}
-    ::xsdb::setcmdmeta {tfile rmdir} brief {Remove directory}
+    ::xsdb::setcmdmeta {tfile rmdir} brief {Remove directory.}
     ::xsdb::setcmdmeta {tfile rmdir} description {
 SYNOPSIS {
     tfile rmdir <path>
-        Remove directory <path>
+        Remove directory <path>.
 }
 RETURNS {
 }
@@ -449,11 +449,11 @@ RETURNS {
     }
     namespace export mkdir
     ::xsdb::setcmdmeta {tfile mkdir} categories {tfile}
-    ::xsdb::setcmdmeta {tfile mkdir} brief {Create directory}
+    ::xsdb::setcmdmeta {tfile mkdir} brief {Create directory.}
     ::xsdb::setcmdmeta {tfile mkdir} description {
 SYNOPSIS {
     tfile mkdir <path>
-        Make directory <path>
+        Make directory <path>.
 }
 RETURNS {
 }
@@ -478,14 +478,14 @@ RETURNS {
     }
     namespace export realpath
     ::xsdb::setcmdmeta {tfile realpath} categories {tfile}
-    ::xsdb::setcmdmeta {tfile realpath} brief {Get real path}
+    ::xsdb::setcmdmeta {tfile realpath} brief {Get real path.}
     ::xsdb::setcmdmeta {tfile realpath} description {
 SYNOPSIS {
     tfile realpath <path>
-        Get real path of <path>
+        Get real path of <path>.
 }
 RETURNS {
-    Real path
+    Real path.
 }
 }
 
@@ -510,11 +510,11 @@ RETURNS {
     }
     namespace export rename
     ::xsdb::setcmdmeta {tfile rename} categories {tfile}
-    ::xsdb::setcmdmeta {tfile rename} brief {Rename path}
+    ::xsdb::setcmdmeta {tfile rename} brief {Rename path.}
     ::xsdb::setcmdmeta {tfile rename} description {
 SYNOPSIS {
     tfile rename <old path> <new path>
-        Rename file or directory
+        Rename file or directory.
 }
 RETURNS {
 }
@@ -539,14 +539,14 @@ RETURNS {
     }
     namespace export readlink
     ::xsdb::setcmdmeta {tfile readlink} categories {tfile}
-    ::xsdb::setcmdmeta {tfile readlink} brief {Read symbolic link}
+    ::xsdb::setcmdmeta {tfile readlink} brief {Read symbolic link.}
     ::xsdb::setcmdmeta {tfile readlink} description {
 SYNOPSIS {
     tfile readlink <path>
-        Read link file
+        Read link file.
 }
 RETURNS {
-    Target path
+    Target path.
 }
 }
 
@@ -571,11 +571,11 @@ RETURNS {
     }
     namespace export symlink
     ::xsdb::setcmdmeta {tfile symlink} categories {tfile}
-    ::xsdb::setcmdmeta {tfile symlink} brief {Create symbolic link}
+    ::xsdb::setcmdmeta {tfile symlink} brief {Create symbolic link.}
     ::xsdb::setcmdmeta {tfile symlink} description {
 SYNOPSIS {
     tfile symlink <old path> <new path>
-        Symlink file or directory
+        Symlink file or directory.
 }
 RETURNS {
 }
@@ -603,14 +603,14 @@ RETURNS {
     }
     namespace export opendir
     ::xsdb::setcmdmeta {tfile opendir} categories {tfile}
-    ::xsdb::setcmdmeta {tfile opendir} brief {Open directory}
+    ::xsdb::setcmdmeta {tfile opendir} brief {Open directory.}
     ::xsdb::setcmdmeta {tfile opendir} description {
 SYNOPSIS {
     tfile opendir <path>
-        Open directory <path>
+        Open directory <path>.
 }
 RETURNS {
-    File handle
+    File handle.
 }
 }
 
@@ -637,14 +637,14 @@ RETURNS {
     }
     namespace export readdir
     ::xsdb::setcmdmeta {tfile readdir} categories {tfile}
-    ::xsdb::setcmdmeta {tfile readdir} brief {Read directory}
+    ::xsdb::setcmdmeta {tfile readdir} brief {Read directory.}
     ::xsdb::setcmdmeta {tfile readdir} description {
 SYNOPSIS {
     tfile readdir <file handle>
-        Read directory
+        Read directory.
 }
 RETURNS {
-    File handle
+    File handle.
 }
 }
 
@@ -715,14 +715,14 @@ RETURNS {
     }
     namespace export copy
     ::xsdb::setcmdmeta {tfile copy} categories {tfile}
-    ::xsdb::setcmdmeta {tfile copy} brief {Copy target file}
+    ::xsdb::setcmdmeta {tfile copy} brief {Copy target file.}
     ::xsdb::setcmdmeta {tfile copy} description {
 SYNOPSIS {
     tfile copy <src> <dest>
-        Copy file <src> to <dest>
+        Copy file <src> to <dest>.
 }
 RETURNS {
-    Copy file locally on target
+    Copy file locally on target.
 }
 }
 
@@ -740,14 +740,14 @@ RETURNS {
     }
     namespace export user
     ::xsdb::setcmdmeta {tfile user} categories {tfile}
-    ::xsdb::setcmdmeta {tfile user} brief {Get user attributes}
+    ::xsdb::setcmdmeta {tfile user} brief {Get user attributes.}
     ::xsdb::setcmdmeta {tfile user} description {
 SYNOPSIS {
     tfile user
-        Get user attributes
+        Get user attributes.
 }
 RETURNS {
-    User information
+    User information.
 }
 }
 
@@ -765,14 +765,14 @@ RETURNS {
     }
     namespace export roots
     ::xsdb::setcmdmeta {tfile roots} categories {tfile}
-    ::xsdb::setcmdmeta {tfile roots} brief {Get file system roots}
+    ::xsdb::setcmdmeta {tfile roots} brief {Get file system roots.}
     ::xsdb::setcmdmeta {tfile roots} description {
 SYNOPSIS {
     tfile roots
-        Get file system roots
+        Get file system roots.
 }
 RETURNS {
-    List of file system roots
+    List of file system roots.
 }
 }
 
@@ -827,14 +827,14 @@ RETURNS {
     }
     namespace export ls
     ::xsdb::setcmdmeta {tfile ls} categories {tfile}
-    ::xsdb::setcmdmeta {tfile ls} brief {List directory contents}
+    ::xsdb::setcmdmeta {tfile ls} brief {List directory contents.}
     ::xsdb::setcmdmeta {tfile ls} description {
 SYNOPSIS {
     tfile ls <path>
-        List directory content
+        List directory contents.
 }
 RETURNS {
-    Directory content
+    Directory contents.
 }
 }
 

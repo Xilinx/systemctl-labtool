@@ -390,7 +390,7 @@ OPTIONS {
     -set
         Set current target to entry single entry in list.  This is
         useful in comibination with -filter option.  An error will be
-        generate if list is empty or contains more than one entry.
+        generated if list is empty or contains more than one entry.
 
     -regexp
         Use regexp for filter matching.
@@ -402,11 +402,11 @@ OPTIONS {
         Specify filter expression to control which targets are
         included in list based on its properties.  Filter expressions
         are similar to Tcl expr syntax.  Target properties are
-        references by name, while Tcl variables are accessed using the
+        referenced by name, while Tcl variables are accessed using the
         $ syntax, string must be quoted.  Operators ==, !=, <=, >=, <,
-        >, && and || are supported as well as ().  There operators
+        >, &&, and || are supported as well as ().  There operators
         behave like Tcl expr operators.  String matching operator =~
-        and !~ match lhs string with rhs pattern using either regexp
+        and !~ match LHS string with RHS pattern using either regexp
         or string match.
 
     -target-properties
@@ -424,21 +424,21 @@ OPTIONS {
         Poll until the targets specified by filter option are found
         on the scan chain, or until timeout. This option is valid only
         with filter option.
-        The timeout value is in seconds. Default timeout is 3 seconds.
+        The timeout value is in seconds. Default timeout is three seconds.
 }
 RETURNS {
     The return value depends on the options used.
 
     <none>
-        Jtag targets list when no options are used.
+        JTAG targets list when no options are used.
 
     -filter
-        Filtered jtag targets list.
+        Filtered JTAG targets list.
 
     -target-properties
-        Tcl list consisting of jtag target properties.
+        Tcl list consisting of JTAG target properties.
 
-    An error is returned when jtag target selection fails.
+    An error is returned when JTAG target selection fails.
 }
 EXAMPLE {
     jtag targets
@@ -454,7 +454,7 @@ EXAMPLE {
         Set current target to target with name starting with "arm".
 
     jtag targets -set -filter {level == 0}
-        List Jtag cables.
+        List JTAG cables.
 }
 }
 
@@ -527,7 +527,7 @@ DESCRIPTION
             significant bit of the first byte in the string is shifted
             first.
         -capture
-            Cature TDO data during shift and return from sequence run
+            Capture TDO data during shift and return from sequence run
             command.
         -state <new-state>
             State to enter after shift is complete.  The default is RESET.
@@ -539,10 +539,10 @@ DESCRIPTION
         that do not support delays without generating JTAG clocks.
 
     sequence get_pin pin
-        Get value of <pin>.  Supported pins is cable specific.
+        Get value of <pin>.  Supported pins are cable specific.
 
     sequence set_pin pin value
-        Set value of <pin> to <value>.  Supported pins is cable
+        Set value of <pin> to <value>.  Supported pins are cable
         specific.
 
     sequence atomic enable
@@ -1471,7 +1471,7 @@ OPTIONS {
         is given.
 
     -format
-        List format of supported server strings.
+        Return the format of each supported server string.
 
     -open <server>
         Specifies server to open.

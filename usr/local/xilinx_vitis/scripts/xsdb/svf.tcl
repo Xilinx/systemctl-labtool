@@ -1138,13 +1138,13 @@ EXAMPLE {
 	}
 	array set params [::xsdb::get_options args $options 0]
 
-	set device_index [dict get $config_dict device_index]
-	set dapname "dap$device_index"
-	set cpu_index [dict get $config_dict cpu_index]
-
 	if { $params(help) } {
 	    return [help svf [lindex [split [lindex [info level 0] 0] ::] end]]
 	}
+
+	set device_index [dict get $config_dict device_index]
+	set dapname "dap$device_index"
+	set cpu_index [dict get $config_dict cpu_index]
 
 	writesvf "// reset"
 	if { $params(processor) } {

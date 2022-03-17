@@ -122,26 +122,26 @@ namespace eval ::xsdb::server {
     ::xsdb::setcmdmeta {xsdbserver start} description {
 SYNOPSIS {
     xsdbserver start [options]
-        Start XSDB command server listener.  XSDB command server
+        Start XSDB command server listener.  The XSDB command server
         allows external processes to connect to XSDB to evaluate
         commands.  The XSDB server reads commands from the
-        connected socket one line at the time.  After evaluation, a
+        connected socket one line at a time.  After evaluation, a
         line is sent back starting with 'okay' or 'error' followed
         by the result or error as a backslash quoted string.
 }
 OPTIONS {
     -host <addr>
-        Limits the network interface on which to listen for incomming
+        Limits the network interface on which to listen for incoming
         connections.
 
     -port <port>
-        Specifies port to listen on.  If this option is not specified
-        or if the port is zero then a dynamically allocated port
+        Specifies port to listen on.  If this option is not specified,
+        or if the port is zero, a dynamically allocated port
         number is used.
 }
 RETURNS {
-    Server details are disaplayed on the console if server is started.
-    successfully, or error string, if a server has been already started.
+    Server details are displayed on the console if the server is started
+    successfully. Error string, if a server has been already started.
 }
 EXAMPLE {
     xsdbserver start
@@ -149,7 +149,7 @@ EXAMPLE {
 
     xsdbserver start -host localhost -port 2000
         Start XSDB server listener using port 2000 and only allow
-        incomming connections on this host.
+        incoming connections on this host.
 }
 }
 
@@ -245,7 +245,7 @@ RETURNS {
     }
     namespace export version
     ::xsdb::setcmdmeta {xsdbserver version} categories {miscellaneous}
-    ::xsdb::setcmdmeta {xsdbserver version} brief {Return XSDB command server version}
+    ::xsdb::setcmdmeta {xsdbserver version} brief {Return XSDB command server version.}
     ::xsdb::setcmdmeta {xsdbserver version} description {
 SYNOPSIS {
     xsdbserver version

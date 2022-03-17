@@ -8,7 +8,7 @@ The Labtool binaries (hw_Server, xsdb) is covered under "Permissive Binary Only"
 
 The xsdb TCL scripts are covered under "Xilinx MIT" License: LICENSE_TCL
 
-To use XSDB with system controller:
+To use XSDB with system controller (This might not be required if the script was sourced on boot):
 
 ```
 source /etc/init.d/xsdb

@@ -1,5 +1,5 @@
 ##################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012 - 2022 Xilinx, Inc.  All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -276,6 +276,30 @@ proc ::add_channel {chan url} {
 	}
 	namespace export update_children
 
+	proc update_stacktrace_children {ctx type invtypes maxframes fmt err} {
+	    global [namespace current]::chan
+	    global [namespace current]::ctxs
+	    variable datatypes::[set type]::pending
+
+	    if { $err != "" } {
+		set data [list $err]
+	    } elseif { [catch {::tcf::read $chan $fmt} data] } {
+		if { $data == "" } {
+		    set data "unknown read error"
+		}
+		set data [list $data]
+	    }
+
+	    dict set ctxs $ctx $type:$maxframes data $data
+
+	    control::assert {[dict exists $pending $ctx]}
+	    dict unset pending $ctx
+	    if { [dict size $pending] == 0 } {
+		datatypes::[set type]::cache notify
+	    }
+	}
+	namespace export update_stacktrace_children
+
 	proc update_cache {ctx type fmt err} {
 	    global [namespace current]::chan
 	    global [namespace current]::ctxs
@@ -496,6 +520,48 @@ proc ::add_channel {chan url} {
 	    }
 	}
 
+	proc stacktrace_get_children {service invtypes} {
+	    namespace eval datatypes::$service:children {
+		::tcf::cache_create cache
+		variable pending {}
+		variable service [uplevel 1 set service]
+		variable invtypes [uplevel 1 set invtypes]
+		namespace import [namespace parent [namespace parent]]::update_stacktrace_children
+		proc get {ctx frames} {
+		    global [namespace parent [namespace parent]]::chan
+		    global [namespace parent [namespace parent]]::ctxs
+		    global [namespace current]::pending
+		    global [namespace current]::service
+		    global [namespace current]::invtypes
+
+		    set type $service:children
+		    if { ![dict exists $pending $ctx] } {
+			if { $frames == -1} {
+			    ::tcf::send_command $chan $service getChildren [list update_stacktrace_children $ctx $type $invtypes -1 "Ea{}"]
+			    ::tcf::write $chan "s" [list $ctx]
+			} else {
+			    ::tcf::send_command $chan $service getChildrenRange [list update_stacktrace_children $ctx $type $invtypes $frames "Ea{}"]
+			    ::tcf::write $chan "sii" [list $ctx 0 $frames]
+			}
+
+			dict set pending $ctx 1
+		    }
+		    cache wait
+		}
+		proc invalidate {ctx} {
+		    global [namespace parent [namespace parent]]::ctxs
+		    global [namespace current]::service
+		    global [namespace current]::invtypes
+
+		    dict for {key name} [dict get $ctxs $ctx] {
+			if { [string first "StackTrace:children" $key] == 0 } {
+			    dict unset ctxs $ctx $key
+			}
+		    }
+		}
+	    }
+	}
+
 	proc std_get_children {service invtypes} {
 	    namespace eval datatypes::$service:children {
 		::tcf::cache_create cache
@@ -612,7 +678,7 @@ proc ::add_channel {chan url} {
 		    std_get_context $service "AA"
 		}
 		StackTrace {
-		    std_get_children $service {StackTrace:context StackTrace:children}
+		    stacktrace_get_children $service {StackTrace:context StackTrace:children}
 		    stacktrace_get_context $service "a{o{}}E"
 		}
 		Expressions {
@@ -866,6 +932,18 @@ proc ::add_channel {chan url} {
 			::tcf::send_command {$chan} Xicom jtagRegDef [list update_cache \$ctx JtagReg:def {EoA}]
 			::tcf::write {$chan} s [list \$ctx ]
 		    }}]
+		}
+		stapl {
+		    ::tcf::on_event $chan stapl staplData [subst -noc {
+			set reply [::tcf::read {$chan} iB]
+			set data [lindex \$reply 1]
+			event_notify \$data "stapl" "Data"
+		    }]
+		    ::tcf::on_event $chan stapl staplNotes [subst -noc {
+			set reply [::tcf::read {$chan} iB]
+			set data [lindex \$reply 1]
+			event_notify \$data "stapl" "Notes"
+		    }]
 		}
 	    }
 	}
@@ -1203,6 +1281,41 @@ proc ::get_regs {chan parent flags} {
     ::tcf::cache_exit
 
     return $regs
+}
+
+proc ::get_stacktrace_children {chan ctx frames } {
+    global ::channels::[set chan]::ctxs
+    if { $frames > 0} {
+	incr frames -1
+    } else {
+	set frames -1
+    }
+    set type StackTrace:children
+
+    dict for {key name} [dict get $ctxs $ctx] {
+	if { [string first "StackTrace:children" $key] == 0 } {
+	    set cachedframes [lindex [split $key ":"] 2 ]
+	    if { $cachedframes != -1 && $frames != -1} {
+		if { $frames <= $cachedframes } {
+		    return [list [lindex [dict get $ctxs $ctx $type:$cachedframes data] 0] \
+			    [lrange [lindex [dict get $ctxs $ctx $type:$cachedframes data] 1] 0 $frames]]
+		}
+	    } elseif { $cachedframes == -1 && $frames == -1} {
+		return [dict get $ctxs $ctx $type:$cachedframes data]
+	    }
+	}
+    }
+
+    if { [catch {::channels::[set chan]::datatypes::[set type]::get $ctx $frames} msg opt] } {
+	# TODO: Change to work for type returning error in different position.
+	if { $msg == $::cache_miss_err } {
+	    return -options $opt $msg
+	} elseif { [info procs ::channels::[set chan]::datatypes::[set type]::get] == "" } {
+	    return [list "$type not supported"]
+	} else {
+	    return [list $msg]
+	}
+    }
 }
 
 package provide xsdb::tcfinterp $::xsdb::tcfinterp::version

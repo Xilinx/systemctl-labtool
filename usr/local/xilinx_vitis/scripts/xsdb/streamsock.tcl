@@ -22,6 +22,7 @@
 
 namespace eval ::streamsock {
     variable update_poll_active 0
+    variable update_poll_delay 50000
     variable instances {}
     variable instance_id 0
 
@@ -194,13 +195,24 @@ namespace eval ::streamsock {
 	stream_reader $name
     }
 
+    proc set_update_poll_delay { delay } {
+	 variable update_poll_delay [expr $delay]
+    }
+
+    proc get_update_poll_delay {} {
+	 variable update_poll_delay
+	 expr $update_poll_delay
+    }
+
+
     proc update_poll {} {
 	variable update_poll_active
+        variable update_poll_delay
 	variable instances
 
 	catch update
 	if { [dict size $instances] > 0 } {
-	    ::tcf::post_event update_poll 50000
+	    ::tcf::post_event update_poll $update_poll_delay
 	} else {
 	    set update_poll_active 0
 	}
