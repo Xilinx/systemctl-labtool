@@ -836,15 +836,19 @@ RETURNS {
 		if { $params(plnx) != "1" } {
 		    if { ![info exists params(proc)] && [isAIEDomain $params(platform) $params(domain)] == "1" } {
 			if { $params(template) == "Hello World" } {
-			    set params(template) "Empty Application"
+			    set params(template) "Empty Application(C)"
 			}
 		    } elseif { [info exists params(proc)] && $params(proc) == "ai_engine" } {
 			# $params(template)  != "Empty Application"
 			# puts "WARNING: $params(template) not supported for the processor type - $params(proc). Setting to Empty Application"
-			set params(template) "Empty Application"
+			set params(template) "Empty Application(C)"
 		    } elseif { [string compare -nocase $params(lang) "C"] == 0 } {
 			set appfound 0
 			set applist [::hsi::utils::get_all_app_details -dict]
+			if { $params(template) == "Empty Application" } {
+			    # to provide backward compatibility for previous version templates
+			    set params(template) "Empty Application(C)"
+			}
 			dict for {app details} $applist {
 			    if { $params(template) == [dict get $details userdefname] } {
 				set appfound 1
@@ -856,14 +860,18 @@ RETURNS {
 				    use repo -apps to get the available templates"
 			}
 		    } elseif { [string compare -nocase $params(lang) "c++"] == 0 } {
-			if { $params(template) == "Hello World" || $params(template) == "Linux Hello World" } {
-			    set params(template) "Empty Application"
+			if { $params(template) == "Hello World" || $params(template) == "Linux Hello World" || $params(template) == "Empty Application" } {
+			    set params(template) "Empty Application (C++)"
 			}
 		    }
 		} else {
 		    if { [string compare -nocase $params(lang) "C"] == 0 } {
 			set appfound 0
 			set applist [::hsi::utils::get_all_app_details -dict]
+			if { $params(template) == "Empty Application" } {
+			    # to provide backward compatibility for previous version templates
+			    set params(template) "Empty Application(C)"
+			}
 			dict for {app details} $applist {
 			    if { $params(template) == [dict get $details userdefname] } {
 				set appfound 1
@@ -875,8 +883,8 @@ RETURNS {
 				    use repo -apps to get the available templates"
 			}
 		    } elseif { [string compare -nocase $params(lang) "c++"] == 0 } {
-			if { $params(template) == "Hello World" || $params(template) == "Linux Hello World" } {
-			    set params(template) "Empty Application"
+			if { $params(template) == "Hello World" || $params(template) == "Linux Hello World" || $params(template) == "Empty Application" } {
+			    set params(template) "Empty Application (C++)"
 			}
 		    }
 		}
@@ -1411,7 +1419,9 @@ SYNOPSIS {
         List all applications for in the workspace.
 }
 OPTIONS {
-    None.
+    -dict
+        List all the applications for the workspace in TCL dictionary format.
+        Without this option, applications are listed in tabular format.
 }
 RETURNS {
     List of applications in the workspace. If no applications exist,
@@ -1419,7 +1429,10 @@ RETURNS {
 }
 EXAMPLE {
     app list
-        Lists all the applications in the workspace.
+        Lists all the applications in the workspace in tabular format.
+
+    app list -dict
+        Lists all the applications in the workspace in TCL dictionary format.
 }
 }
 

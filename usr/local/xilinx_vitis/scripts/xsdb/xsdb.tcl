@@ -1,5 +1,5 @@
 ##################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012 - 2022 Xilinx, Inc.  All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -2356,6 +2356,9 @@ namespace eval ::xsdb {
 		set nc [lindex [dict get $data nodes $node Jtag:context] 1]
 		dict set props jtag_device_id [dict get $data nodes $node node_id]
 		dict set props jtag_device_ctx [dict get $nc ID]
+		if { [dict exists $nc Name] } {
+		    dict set props jtag_device_name [dict get $nc Name]
+		}
 		set device_index [dict get $data nodes $node index]
 
 		#Find node for scan chain and check capabilities
@@ -2911,53 +2914,53 @@ namespace eval ::xsdb {
     setcmdmeta connect description {
 SYNOPSIS {
     connect [options]
-        Allows users to connect to a server, list connections or switch
+        Allows users to connect to a server, list connections, or switch
         between connections.
 }
 OPTIONS {
     -host <host name/ip>
-        Name/IP address of the host machine
+        Name/IP address of the host machine.
 
     -port <port num>
-        TCP port number
+        TCP port number.
 
     -url <url>
-        URL description of hw_server/TCF agent
+        URL description of hw_server/TCF agent.
 
     -list
-        List open connections
+        List open connections.
 
     -set <channel-id>
-        Set active connection
+        Set active connection.
 
     -new
-        Create a new connection, even one exist to the same url
+        Create a new connection, even one existing to the same URL.
 
     -xvc-url <url>
-        Open Xilinx Virtual Cable connection
+        Open Xilinx virtual cable connection.
 
     -symbols
-        Launch symbol server to enable source level debugging
-        for remote connections
+        Launch symbol server to enable source-level debugging
+        for remote connections.
 }
 RETURNS {
     The return value depends on the options used.
 
     -port, -host, -url, -new
-        <channel-id> of the new connection or error if the connection fails
+        <channel-id> of the new connection or error if the connection fails.
 
     -list
-        list of open channels or nothing when there are no open channels
+        List of open channels or nothing when there are no open channels.
 
     -set
-        nothing
+        Nothing.
 }
 EXAMPLE {
     connect -host localhost -port 3121
         Connect to hw_server/TCF agent on host localhost and port 3121.
 
     connect -url tcp:localhost:3121
-	Identical to previous example.
+	Identical to the previous example.
 }
 }
 
@@ -3258,8 +3261,8 @@ SYNOPSIS {
 OPTIONS {
     -set
         Set current target to entry single entry in list.  This is
-        useful in comibination with -filter option.  An error will be
-        generate if list is empty or contains more than one entry.
+        useful in combination with the -filter option.  An error is
+        generated if the list is empty or contains more than one entry.
     -regexp
         Use regexp for filter matching
     -nocase
@@ -3268,22 +3271,22 @@ OPTIONS {
         Specify filter expression to control which targets are
         included in list based on its properties.  Filter expressions
         are similar to Tcl expr syntax.  Target properties are
-        references by name, while Tcl variables are accessed using the
-        $ syntax, string must be quoted.  Operators ==, !=, <=, >=, <,
-        >, && and || are supported as well as ().  There operators
-        behave like Tcl expr operators.  String matching operator =~
-        and !~ match lhs string with rhs pattern using either regexp
+        referenced by name, while Tcl variables are accessed using the
+        $ syntax string must be quoted.  Operators ==, !=, <=, >=, <,
+        >, &&, and || are supported as well as ().  These operators
+        behave like Tcl expr operators.  String matching operators =~
+        and !~ match the LHS string with the RHS pattern using either regexp
         or string match.
     -target-properties
-        Returns a Tcl list of dict's containing target properties.
+        Returns a Tcl list of dicts containing target properties.
     -index <index>
-        Include targets based on jtag scan chain position.  This is
+        Include targets based on the JTAG scan chain position.  This is
         identical to specifying -filter {jtag_device_index==<index>}.
     -timeout <sec>
         Poll until the targets specified by filter option are found
         on the scan chain, or until timeout. This option is valid only
         with filter option.
-        The timeout value is in seconds. Default timeout is 3 seconds
+        The timeout value is in seconds. Default timeout is three seconds.
 
 }
 RETURNS {
@@ -3316,7 +3319,7 @@ EXAMPLE {
 
     targets -set -filter {name =~ "MicroBlaze*"} -index 0
         Set current target to target with name starting with "MicroBlaze"
-        and which is on 1st Jtag Device.
+        and which is on the first JTAG device.
 }
 }
 
@@ -3450,17 +3453,17 @@ EXAMPLE {
 SYNOPSIS {
     rrd [options] [reg]
         Read registers or register definitions.
-        For a processor core target, processor core register can be read.
+        For a processor core target, the processor core register can be read.
         For a target representing a group of processor cores, system registers
         or IOU registers can be read.
 }
 OPTIONS {
     -defs
-        Read register definitions instead of values
+        Read register definitions instead of values.
 
     -no-bits
         Does not show bit fields along with register values. By default,
-	bit fields are shown, when available
+	bit fields are shown, when available.
 }
 EXAMPLE {
     rrd
@@ -3590,15 +3593,15 @@ RETURNS {
     setcmdmeta rwr description {
 SYNOPSIS {
     rwr <reg> <value>
-        Write the <value> to active target register specified by <reg>
-        For a processor core target, processor core register can be written to.
-        For a target representing a group of processor cores, system registers
-        or IOU registers can be written.
+        Write the <value> to active target register specified by <reg>.
+        For a processor core target, the processor core register can be written
+        to. For a target representing a group of processor cores, system
+        registers or IOU registers can be written to.
 }
 RETURNS {
     Nothing, if successful.
     Error string, if an invalid register is specified or the register cannot be
-    written.
+    written to.
 }
 
 EXAMPLE {
@@ -3635,15 +3638,14 @@ EXAMPLE {
         variable streamtable
 	variable silent_mode
 
-	if { $silent_mode == 1 } {
-	    # Suppress event notifications in non-interactive/silent mode
-	    return
-	}
 	# Print any channel related messages and return if curchan is closed
 	set tcfchans ""
 	set breakpoints ""
 	set ctxs ""
 	dict for {key info} $et {
+	    if { $silent_mode == 1 && [lindex $info 0] != "stapl" } {
+		continue
+	    }
 	    switch -- [lindex $info 0] {
 		"breakpoint" {
 		    dict set breakpoints $key [lindex $info 1]
@@ -3654,7 +3656,31 @@ EXAMPLE {
 		"target" {
 		    dict set ctxs $key [lindex $info 1]
 		}
+		"stapl" {
+		    dict for {channel maps} $stapl::stapltable {
+			if { $channel == $xsdb::curchan } {
+			    break
+			}
+		    }
+		    set fd [dict get $maps "handle"]
+		    if { [lindex $info 1] == "Data"} {
+			puts $fd $key
+		    }
+		    if { [lindex $info 1] == "Notes"} {
+			seek $fd 0
+			set filedata [read $fd]
+			seek $fd 0
+			puts $fd $key
+			puts $fd $filedata
+			unset filedata
+			dict set stapl::stapltable $curchan "done" 1
+		    }
+		}
 	    }
+	}
+	if { $silent_mode == 1 } {
+	    # Suppress event notifications in non-interactive/silent mode
+	    return
 	}
 	dict for {chan state} $tcfchans {
 	    puts "Info: $chan $state"
@@ -4084,18 +4110,18 @@ SYNOPSIS {
 }
 OPTIONS {
     -addr <address>
-        Resume execution from address specified by <address>
+        Resume execution from address specified by <address>.
 
     -block
-        Block until the target stops or a timeout is reached
+        Block until the target stops or a timeout is reached.
 
     -timeout <sec>
-        Timeout value in seconds
+        Timeout value in seconds.
 }
 RETURNS {
     Nothing, if the target is resumed.
     Error string, if the target is already running or cannot be resumed or does
-    not halt within timeout, after being resumed.
+    not halt within timeout after being resumed.
 
     An information message is printed on the console when the target is resumed.
 }
@@ -4108,7 +4134,7 @@ EXAMPLE {
 
     con -block -timeout 5
         Resume execution of the active target and wait until the target stops
-        or until the 5 sec timeout is reached.
+        or until the five second timeout is reached.
 }
 }
 
@@ -4156,7 +4182,7 @@ EXAMPLE {
 	    }
 	    set stack {}
 	    set cache_misses 0
-	    set ret [get_ctx_data $chan $ctx StackTrace:children]
+	    set ret [get_stacktrace_children $chan $ctx 1]
 	    if { [lindex $ret 0] != "" } {
 		error [lindex $ret 0]
 	    }
@@ -4305,11 +4331,11 @@ EXAMPLE {
 SYNOPSIS {
     stp [count]
         Resume execution of the active target until control reaches instruction
-	that belongs to different line of source code. If a function is called,
-	stop at first line of the function code.
-	Error is returned if line number information not available.
-	If <count> is greater than 1, repeat <count> times.
-	Default value of count is 1.
+        that belongs to different line of source code. If a function is called,
+        stop at first line of the function code.
+        Error is returned if line number information not available.
+        If <count> is greater than 1, repeat <count> times.
+        Default value of count is 1.
 }
 RETURNS {
     Nothing, if the target has single stepped.
@@ -4330,18 +4356,18 @@ RETURNS {
 SYNOPSIS {
     nxt [count]
         Resume execution of the active target until control reaches instruction
-	that belongs to a different line of source code, but runs any functions
-	called at full speed.
-	Error is returned if line number information not available.
-	If <count> is greater than 1, repeat <count> times.
-	Default value of count is 1.
+        that belongs to a different line of source code, but runs any functions
+        called at full speed.
+        Error is returned if line number information not available.
+        If <count> is greater than 1, repeat <count> times.
+        Default value of count is 1.
 }
 RETURNS {
     Nothing, if the target has stepped to the next source line.
     Error string, if the target is already running or cannot be resumed.
 
-    An information message is printed on the console when the target stops at the next
-    address.
+    An information message is printed on the console when the target stops at
+    the next address.
 }
 }
 
@@ -4354,17 +4380,17 @@ RETURNS {
     setcmdmeta stpi description {
 SYNOPSIS {
     stpi [count]
-        Execute a single machine instruction. If instruction is function call,
-	stop at first instruction of the function code
-	If <count> is greater than 1, repeat <count> times.
-	Default value of count is 1.
+        Execute a single machine instruction. If the instruction is a function
+        call, stop at the first instruction of the function code.
+        If <count> is greater than 1, repeat <count> times.
+        Default value of count is 1.
 }
 RETURNS {
     Nothing, if the target has single stepped.
     Error if the target is already running or cannot be resumed.
 
-    An information message is printed on the console when the target stops at the next
-    address.
+    An information message is printed on the console when the target stops at
+    the next address.
 }
 }
 
@@ -4377,17 +4403,17 @@ RETURNS {
     setcmdmeta nxti description {
 SYNOPSIS {
     nxti [count]
-        Step over a single machine instruction. If instruction is function call,
-	execution continues until control returns from the function.
-	If <count> is greater than 1, repeat <count> times.
-	Default value of count is 1.
+        Step over a single machine instruction. If the instruction is a function
+        call, execution continues until control returns from the function.
+        If <count> is greater than 1, repeat <count> times.
+        Default value of count is 1.
 }
 RETURNS {
     Nothing, if the target has stepped to the next address.
     Error string, if the target is already running or cannot be resumed.
 
-    An information message is printed on the console when the target stops at the next
-    address.
+    An information message is printed on the console when the target stops at
+    the next address.
 }
 }
 
@@ -4465,12 +4491,12 @@ RETURNS {
     }
     namespace export dis
     setcmdmeta dis categories {running}
-    setcmdmeta dis brief {Disassemble Instructions.}
+    setcmdmeta dis brief {Disassemble instructions.}
     setcmdmeta dis description {
 SYNOPSIS {
     dis <address> [num]
 	Disassemble <num> instructions at address specified by <address>
-	The keyword "pc" can be used to disassemble instructions at current PC
+	The keyword "pc" can be used to disassemble instructions at the current PC.
 	Default value for <num> is 1.
 }
 RETURNS {
@@ -4637,7 +4663,7 @@ EXAMPLE {
     }
     namespace export mrd
     setcmdmeta mrd categories {memory}
-    setcmdmeta mrd brief {Memory Read}
+    setcmdmeta mrd brief {Memory read.}
     setcmdmeta mrd description {
 SYNOPSIS {
     mrd [options] <address> [num]
@@ -4655,22 +4681,29 @@ OPTIONS {
         h = Half-word accesses
         w = Word accesses
         d = Double-word accesses
-        Default access size is w
-        Address will be aligned to access-size before reading memory, if
+        Default access size is w.
+        Address is aligned to access-size before reading memory, if the
         '-unaligned-access' option is not used.
-        For targets which do not support double-word access, debugger uses
-        2 word accesses. If number of data values to be read is more than 1,
-        then debugger selects appropriate access size. For example,
+        For targets that do not support double-word access, the debugger uses
+        two word accesses. If the number of data values to be read is more than
+        1, the debugger selects the appropriate access size. For example,
         1. mrd -size b 0x0 4
-           Debugger accesses one word from the memory, displays 4 bytes.
+           Debugger accesses one word from the memory, displays four bytes.
         2. mrd -size b 0x0 3
            Debugger accesses one half-word and one byte from the memory,
-           displays 3 bytes.
+           displays three bytes.
         3. mrd 0x0 3
-           Debugger accesses 3 words from the memory and displays 3 words.
+           Debugger accesses three words from the memory and displays three
+           words.
+
+        To read more than 64 bits of data, specify the number of data words
+        along with the address. Data read is in multiples of access size. For
+        example, to read 128 bits of data, run "mrd -size d <addr> 2" or
+        "mrd -size w <addr> 4".
 
     -value
-        Return a Tcl list of values, instead of displaying the result on console.
+        Return a Tcl list of values, instead of displaying the result on the
+        console.
 
     -bin
         Return data read from the target in binary format.
@@ -4682,23 +4715,23 @@ OPTIONS {
         Access specified memory space instead default memory space of
         current target.
 
-        For ARM DAP targets, address spaces DPR, APR and AP<n> can be
-        used to access DP Registers, AP Registers and MEM-AP
-        addresses, respectively.  For backwards compatibility -arm-dap
+        For Arm DAP targets, address spaces DPR, APR and AP<n> can be
+        used to access DP registers, AP registers, and MEM-AP
+        addresses respectively.  For backwards compatibility, the -arm-dap
         and -arm-ap options can be used as shorthand for
-        "-address-space APR" and "-address-space AP<n>", respectively.
-        The APR address range is 0x0 - 0xfffc, where the higher 8 bits
-        select an AP and lower 8 bits are the register address for
+        "-address-space APR" and "-address-space AP<n>" respectively.
+        The APR address range is 0x0 - 0xfffc, where the higher eight bits
+        select an AP and the lower eight bits are the register address for
         that AP.
 
     -unaligned-access
-        Memory address is not aligned to access size, before performing
+        The memory address is not aligned to the access size before performing
         a read operation. Support for unaligned accesses is target
         architecture dependent. If this option is not specified, addresses
         are automatically aligned to access size.
 }
 NOTE {
-    Select a APU target to access ARM DAP and MEM-AP address space.
+    Select an APU target to access ARM DAP and MEM-AP address space.
 }
 RETURNS {
     Memory addresses and data in requested format, if successful.
@@ -4715,33 +4748,33 @@ EXAMPLE {
         Read 10 words at 0x0 and return a Tcl list of values.
 
     mrd -size b 0x1 3
-        Read 3 bytes at address 0x1.
+        Read three bytes at address 0x1.
 
     mrd -size h 0x2 2
-        Read 2 half-words at address 0x2.
+        Read two half-words at address 0x2.
 
     mrd -bin -file mem.bin 0 100
         Read 100 words at address 0x0 and write the binary data to mem.bin.
 
     mrd -address-space APR 0x100
         Read APB-AP CSW on Zynq.
-        The higher 8 bits (0x1) select the APB-AP and lower 8 bits (0x0)
-        is the address of CSW.
+        The higher eight bits (0x1) select the APB-AP and the lower eight bits
+        (0x0) are the address of CSW.
 
     mrd -address-space APR 0x04
         Read AHB-AP TAR on Zynq.
-        The higher 8 bits (0x0) select the AHB-AP and lower 8 bits (0x4)
-        is the address of TAR.
+        The higher eight bits (0x0) select the AHB-AP and the lower eight bits
+        (0x4) are the address of TAR.
 
     mrd -address-space AP1 0x80090088
         Read address 0x80090088 on DAP APB-AP.
-        0x80090088 corresponds to DBGDSCR register of Cortex-A9#0, on Zynq
         AP 1 selects the APB-AP.
+        0x80090088 on APB-AP corresponds to DBGDSCR of Cortex-A9#0, on Zynq.
 
     mrd -address-space AP0 0xe000d000
         Read address 0xe000d000 on DAP AHB-AP.
-        0xe000d000 corresponds to QSPI device on Zynq
         AP 0 selects the AHB-AP.
+        0xe000d000 on AHB-AP corresponds to QSPI device on Zynq.
 }
 }
 
@@ -4898,14 +4931,14 @@ EXAMPLE {
     }
     namespace export mwr
     setcmdmeta mwr categories {memory}
-    setcmdmeta mwr brief {Memory Write.}
+    setcmdmeta mwr brief {Memory write.}
     setcmdmeta mwr description {
 SYNOPSIS {
     mwr [options] <address> <values> [num]
         Write <num> data values from list of <values> to active target memory
         address specified by <address>.
         If <num> is not specified, all the <values> from the list are written
-        sequentially from the address specifed by <address>
+        sequentially from the address specified by <address>.
         If <num> is greater than the size of the <values> list, the last
         word in the list is filled at the remaining address locations.
 
@@ -4913,7 +4946,7 @@ SYNOPSIS {
         Read <num> data values from a binary file and write to active target
         memory address specified by <address>.
         If <num> is not specified, all the data from the file is written
-	sequentially from the address specifed by <address>.
+	sequentially from the address specified by <address>.
 }
 OPTIONS {
     -force
@@ -4922,8 +4955,8 @@ OPTIONS {
 
     -bypass-cache-sync
         Do not flush/invalidate CPU caches during memory write. Without this
-        option, debugger flushes/invalidates caches to make sure caches are in
-        sync.
+        option, the debugger flushes/invalidates caches to make sure caches are
+        in sync.
 
     -size <access-size>
         <access-size> can be one of the values below:
@@ -4932,46 +4965,52 @@ OPTIONS {
         w = Word accesses
         d = Double-word accesses
         Default access size is w.
-        Address will be aligned to accesss-size before writing to memory, if
+        Address will be aligned to access-size before writing to memory, if the
         '-unaligned-access' option is not used.
-        If target does not support double-word access, the debugger uses
-        2 word accesses. If number of data values to be written is more than 1,
-        then debugger selects appropriate access size. For example,
+        If the target does not support double-word access, the debugger uses
+        two word accesses. If number of data values to be written is more than
+        1, the debugger selects the appropriate access size. For example,
         1. mwr -size b 0x0 {0x0 0x13 0x45 0x56}
-           Debugger writes one word to the memory, combining 4 bytes.
+           Debugger writes one word to the memory, combining four bytes.
         2. mwr -size b 0x0 {0x0 0x13 0x45}
            Debugger writes one half-word and one byte to the memory,
-           combining the 3 bytes.
+           combining the three bytes.
         3. mwr 0x0 {0x0 0x13 0x45}
-           Debugger writes 3 words to the memory.
+           Debugger writes three words to the memory.
+
+        To write more than 64 bits of data, specify the number of data words
+        along with the address. Data written is in multiples of access size. For
+        example, to write 128 bits of data, run "mwr -size d <addr> 2" or
+        "mwr -size w <addr> 4".
 
     -bin
-        Read binary data from a file and write it to target address space.
+        Read binary data from a file and write it to the target address space.
 
     -file <file-name>
-        File from which binary data is read to write to target address space.
+        File from which binary data is read, to write to the target address
+        space.
 
     -address-space <name>
         Access specified memory space instead default memory space of
         current target.
 
-        For ARM DAP targets, address spaces DPR, APR and AP<n> can be
-        used to access DP Registers, AP Registers and MEM-AP
-        addresses, respectively.  For backwards compatibility -arm-dap
+        For Arm DAP targets, address spaces DPR, APR, and AP<n> can be
+        used to access DP registers, AP registers, and MEM-AP
+        addresses respectively. For backwards compatibility, the -arm-dap
         and -arm-ap options can be used as shorthand for
-        "-address-space APR" and "-address-space AP<n>", respectively.
-        The APR address range is 0x0 - 0xfffc, where the higher 8 bits
-        select an AP and lower 8 bits are the register address for
+        "-address-space APR" and "-address-space AP<n>" respectively.
+        The APR address range is 0x0 - 0xfffc, where the higher eight bits
+        select an AP and the lower eight bits are the register address for
         that AP.
 
     -unaligned-accesses
-        Memory address is not aligned to access size, before performing
+        Memory address is not aligned to access size before performing
         a write operation. Support for unaligned accesses is target
         architecture dependent. If this option is not specified, addresses
         are automatically aligned to access size.
 }
 NOTE {
-    Select a APU target to access ARM DAP and MEM-AP address space.
+    Select an APU target to access Arm DAP and MEM-AP address space.
 }
 RETURNS {
     Nothing, if successful.
@@ -4982,42 +5021,42 @@ EXAMPLE {
         Write 0x1234 to address 0x0.
 
     mwr 0x0 {0x12 0x23 0x34 0x45}
-        Write 4 words from the list of values to address 0x0.
+        Write four words from the list of values to address 0x0.
 
     mwr 0x0 {0x12 0x23 0x34 0x45} 10
-        Write 4 words from the list of values to address 0x0
-        and fill the last word from the list at remaining 6
+        Write four words from the list of values to address 0x0
+        and fill the last word from the list at the remaining six
         address locations.
 
     mwr -size b 0x1 {0x1 0x2 0x3} 3
-        write 3 bytes from the list at address 0x1.
+        Write three bytes from the list at address 0x1.
 
     mwr -size h 0x2 {0x1234 0x5678} 2
-        write 2 half-words from the list at address 0x2.
+        Write two half-words from the list at address 0x2.
 
     mwr -bin -file mem.bin 0 100
         Read 100 words from binary file mem.bin and write the data at
         target address 0x0.
 
     mwr -arm-dap 0x100 0x80000042
-        Write 0x80000042 to APB-AP CSW on Zynq
-        The higher 8 bits (0x1) select the APB-AP and lower 8 bits (0x0)
-        is the address of CSW.
+        Write 0x80000042 to APB-AP CSW on Zynq.
+        The higher eight bits (0x1) select the APB-AP and the lower eight bits
+        (0x0) are the address of CSW.
 
     mwr -arm-dap 0x04 0xf8000120
-        Write 0xf8000120 to AHB-AP TAR on Zynq
-        The higher 8 bits (0x0) select the AHB-AP and lower 8 bits (0x4)
-        is the address of TAR.
+        Write 0xf8000120 to AHB-AP TAR on Zynq.
+        The higher eight bits (0x0) select the AHB-AP and the lower eight bits
+        (0x4) are the address of TAR.
 
     mwr -arm-ap 1 0x80090088 0x03186003
-        Write 0x03186003 to address 0x80090088 on DAP APB-AP
-        0x80090088 corresponds to DBGDSCR register of Cortex-A9#0, on Zynq
+        Write 0x03186003 to address 0x80090088 on DAP APB-AP.
         AP 1 selects the APB-AP.
+        0x80090088 on APB-AP corresponds to DBGDSCR of Cortex-A9#0, on Zynq.
 
     mwr -arm-ap 0 0xe000d000 0x80020001
-        Write 0x80020001 to address 0xe000d000 on DAP AHB-AP
-        0xe000d000 corresponds to QSPI device on Zynq
+        Write 0x80020001 to address 0xe000d000 on DAP AHB-AP.
         AP 0 selects the AHB-AP.
+        0xe000d000 on AHB-AP corresponds to the QSPI device on Zynq.
 }
 }
 
@@ -5122,10 +5161,10 @@ EXAMPLE {
 SYNOPSIS {
     osa -file <file-name> [options]
         Configure OS awareness for the symbol file <file-name> specified.
-        If no symbol file is specifed and only one symbol file exists in
-        target's memory map, then that symbol file is used.
-        If no symbol file is specifed and multiple symbol files exist in
-        target's memory map, then an error is thrown.
+        If no symbol file is specified and only one symbol file exists in
+        target's memory map, that symbol file is used.
+        If no symbol file is specified and multiple symbol files exist in
+        target's memory map, an error is thrown.
 }
 OPTIONS {
     -disable
@@ -5138,19 +5177,19 @@ OPTIONS {
 
     -fast-step
         Enable fast stepping. Only the current process will be re-synced after
-        stepping. All other processes will not be re-synced when this flag is
+        stepping. All other processes will not be resynced when this flag is
 	turned on.
 }
 NOTE {
-    fast-exec and fast-step options are not valid with disable option.
+    The <fast-exec> and <fast-step> options are not valid with disable option.
 }
 RETURNS {
-    Nothing, if OSA is configured successfully.
+    Nothing, if the OSA is configured successfully.
     Error, if ambiguous options are specified.
 }
 EXAMPLE {
     osa -file <symbol-file> -fast-step -fast-exec
-        Enable OSA for <symbole-file> and turn on fast-exec and fast-step modes.
+        Enable OSA for <symbol-file> and turn on fast-exec and fast-step modes.
 
     osa -disable -file <symbol-file>
         Disable OSA for <symbol-file>.
@@ -5350,7 +5389,7 @@ EXAMPLE {
     }
     namespace export memmap
     setcmdmeta memmap categories {memory}
-    setcmdmeta memmap brief {Modify Memory Map.}
+    setcmdmeta memmap brief {Modify memory map.}
     setcmdmeta memmap description {
 SYNOPSIS {
     memmap <options>
@@ -5371,9 +5410,9 @@ OPTIONS {
     -flags <protection-flags>
         Protection flags for the memory region.
         <protection-flags> can be a bitwise OR of the values below:
-        0x1  = Read access is allowed
-        0x2  = Write access is allowed
-        0x4  = Instruction fetch access is allowed
+        0x1  = Read access is allowed.
+        0x2  = Write access is allowed.
+        0x4  = Instruction fetch access is allowed.
     Default value of <protection-flags> is 0x3 (Read/Write Access).
 
     -list
@@ -5392,7 +5431,7 @@ OPTIONS {
     -osa
         Enable OS awareness for the symbol file.
         Fast process start and fast stepping options are turned off by default.
-        These options can be enabled using the osa command. See "help osa" for
+        These options can be enabled using the <osa> command. See "help osa" for
         more details.
 
     -properties <dict>
@@ -5402,21 +5441,21 @@ OPTIONS {
         Specify meta-data of advanced memory map properties.
 }
 NOTE {
-    Only the memory regions previously added through memmap command can
+    Only the memory regions previously added through the memmap command can
     be removed.
 }
 RETURNS {
-    Nothing, while setting the memory map, or list of memory maps when -list
+    Nothing, while setting the memory map. A list of memory maps when the -list
     option is used.
 }
 EXAMPLE {
     memmap -addr 0xfc000000 -size 0x1000 -flags 3
-        Add the memory region 0xfc000000 - 0xfc000fff to target's memory map
+        Add the memory region 0xfc000000 - 0xfc000fff to the target's memory map.
         Read/Write accesses are allowed to this region.
 
     memmap -addr 0xfc000000 -clear
-        Remove the previously added memory region at 0xfc000000 from target's
-        memory map.
+        Remove the previously added memory region at 0xfc000000 from the
+        target's memory map.
 }
 }
 
@@ -5616,33 +5655,33 @@ OPTIONS {
         Clear uninitialized data (bss).
 
     -skip-tcm-clear
-        Clear uninitialized data sections that are part of Versal TCM. This is
-        needed when elfs are loaded through debugger, so that TCM banks are
-        initialized proporly. When the elfs are part of the PDI, PLM initializes
-        the TCM, before loading the elfs.
+        Clear uninitialized data sections that are part of the Versal TCM. This
+        is needed when ELFs are loaded through debugger, so that TCM banks are
+        initialized properly. When the ELFs are part of the PDI, PLM initializes
+        the TCM, before loading the ELFs.
 
     -keepsym
-        Keep previously downloaded elfs in the list of symbol files. Default
-        behavior is to clear the old symbol files while downloading an elf.
+        Keep previously downloaded ELFs in the list of symbol files. Default
+        behavior is to clear the old symbol files while downloading an ELF.
 
     -force
-        Overwrite access protection. By default accesses to reserved and invalid
+        Overwrite access protection. By default, accesses to reserved and invalid
         address ranges are blocked.
 
     -bypass-cache-sync
-        Do not flush/invalidate CPU caches during elf download. Without this
-        option, debugger flushes/invalidates caches to make sure caches are in
-        sync.
+        Do not flush/invalidate CPU caches during ELF download. Without this
+        option, the debugger flushes/invalidates caches to make sure caches are
+        in sync.
 
     -relocate-section-map <addr>
         Relocate the address map of the program sections to <addr>. This option
         should be used when the code is self-relocating, so that the debugger
-        can find debug symbol info for the code. <addr> is the relative address,
-        to which all the program sections are relocated.
+        can find debug symbol information for the code. <addr> is the relative
+        address, to which all the program sections are relocated.
 
     -vaddr
-        Use vaddr from the elf program headers while downloading the elf. This
-        option is valid only for elf files.
+        Use <vaddr> from the ELF program headers while downloading the ELF. This
+        option is valid only for ELF files.
 }
 RETURNS {
     Nothing.
@@ -5835,11 +5874,12 @@ RETURNS {
     setcmdmeta verify description {
 SYNOPSIS {
     verify [options] <file>
-        Verify if the ELF file <file> is downloaded correctly to active target.
+        Verify if the ELF file specified by <file> is downloaded correctly to
+        the active target.
 
     verify -data <file> <addr>
-        Verify if the binary file <file> is downloaded correctly to active
-        target address specified by <addr>.
+        Verify if the binary file specified by <file> is downloaded correctly to
+        the active target address specified by <addr>.
 }
 OPTIONS {
     -force
@@ -5847,8 +5887,8 @@ OPTIONS {
         address ranges are blocked.
 
     -vaddr
-        Use vaddr from the elf program headers while verifying the elf data.
-        This option is valid only for elf files.
+        Use <vaddr> from the ELF program headers while verifying the ELF data.
+        This option is valid only for ELF files.
 }
 RETURNS {
     Nothing, if successful.
@@ -6338,18 +6378,18 @@ RETURNS {
     }
     namespace export rst
     setcmdmeta rst categories {reset}
-    setcmdmeta rst brief {Target Reset.}
+    setcmdmeta rst brief {Target reset.}
     setcmdmeta rst description {
 SYNOPSIS {
     rst [options]
         Reset the active target.
 }
 NOTE {
-    For Versal devices, default subsystem is activated thru IPI channel 5,
-    before triggering the processor reset. This is needed since PLM doesn't
-    activate the subsystem when PS elfs are not part of the PDI. If IPI channel
-    is not enabled in Vivado design, subsystem cannot be activated. This will
-    cause runtime issues if PM API are used.
+    For Versal devices, the default subsystem is activated through IPI channel5,
+    before triggering the processor reset. This is needed because PLM does not
+    activate the subsystem when PS ELFs are not part of the PDI. If the IPI
+    channel is not enabled in the Vivado design, the subsystem cannot be
+    activated. This causes runtime issues if PM API are used.
 }
 OPTIONS {
     -processor
@@ -6357,48 +6397,53 @@ OPTIONS {
 
     -cores
         Reset the active processor group. This reset type is supported only on
-        Zynq, ZynqMP, and Versal devices. A processor group is defined as a set
-        of processor cores and on-chip peripherals like OCM.
+        Zynq, Zynq UltraScale+ MPSoC, and Versal devices. A processor group is
+        defined as a set of processor cores and on-chip peripherals like OCM.
+
+    -dap
+        Reset Arm DAP. This reset type is supported only with targets that
+        represent Arm DAP. Examples of such targets are APU, RPU, PSU, and
+        Versal.
 
     -system
-        Reset the active System. The is the default reset.
+        Reset the active system. The is the default reset.
 
     -srst
-        Generate system reset for active target.  With JTAG this is
+        Generate system reset for active target. With JTAG, this is
         done by generating a pulse on the SRST pin on the JTAG cable
-        assocated with the active target.
+        associated with the active target.
 
     -por
-        Generate power on reset for active target.  With JTAG this is
+        Generate power on reset for active target.  With JTAG, this is
         done by generating a pulse on the POR pin on the JTAG cable
-        assocated with the active target.
+        associated with the active target.
 
     -ps
-        Generate PS only reset on Zynq MP. This is supported only through
-        MicroBlaze PMU target.
+        Generate PS only reset on Zynq UltraScale+ MPSoC. This is supported only
+        through MicroBlaze PMU target.
 
     -stop
-        Suspend cores after reset. If this option is not specified, debugger
+        Suspend cores after reset. If this option is not specified, the debugger
         choses the default action, which is to resume the cores for -system,
         and suspend the cores for -processor, and -cores. This option is only
-        supported with -processor, -cores, and -system options.
+        supported with the -processor, -cores, and -system options.
 
     -start
-        Resume the cores after reset. See description of -stop option for more
-        details.
+        Resume the cores after reset. See the description of the -stop option
+        for more details.
 
     -endianness <value>
-        Set the data endianness to <value>. The following values are supported.
-        le - Little endian
-        be - Big endian
+        Set the data endianness to <value>. The following values are supported:
+        le - Little endian;
+        be - Big endian.
         This option is supported with APU, RPU, A9, A53, and A72 targets. If
         this option is not specified, the current configuration is not changed.
 
     -code-endianness <value>
         Set the instruction endianness to <value>. The following values are
-        supported.
-        le - Little endian
-        be - Big endian
+        supported:
+        le - Little endian;
+        be - Big endian.
         This option is supported with APU, RPU, A9, A53, and A72 targets. If
         this option is not specified, the current configuration is not changed.
 
@@ -6409,16 +6454,16 @@ OPTIONS {
 
     -clear-registers
         Clear CPU registers after a reset is triggered. This option is useful
-        while triggerring a reset after the device is powered up. Otherwise,
+        while triggering a reset after the device is powered up. Otherwise,
         debugger can end up reading invalid system addresses based on the
         register contents. Clearing the registers will avoid unpredictable
         behavior.
-        This option is supported for ARM targets, when used with -processor and
-        -cores.
+        This option is supported for ARM targets, when used with '-processor'
+        and '-cores'.
 
     -type <reset type>
-        The following reset types are supported.
-        pmc-por, pmc-srst, ps-por, ps-srst, pl-por and pl-srst
+        The following reset types are supported:
+        pmc-por, pmc-srst, ps-por, ps-srst, pl-por, and pl-srst.
         This option is supported only for Versal devices.
 }
 RETURNS {
@@ -6897,30 +6942,35 @@ RETURNS {
 SYNOPSIS {
     plm <sub-command> [options]
         Configure PLM log-level/log-memory, or copy/retrieve PLM log, based on
-        <sub-command> specified.
-        Following sub-commands are supported.
-            copy-debug-log - Copy PLM debug log to user memory.
-            set-debug-log  - Configure memory for PLM debug log.
-            set-log-level  - Configure PLM log level.
-            log            - Retrieve PLM debug log.
+        the sub-command specified.
+        The 'copy-debug-log' sub-command allows you to copy the PLM debug log to
+        user memory.
+        The 'set-debug-log' sub-command allows you to configure the memory for
+        the PLM debug log.
+        The 'set-log-level' sub-command allows you to configure the PLM log
+        level.
+        The 'log' command allows you to retrieve the PLM debug log.
+
         Type "help" followed by "plm sub-command", or "plm sub-command" followed
         by "-help" for more details.
 }
 OPTIONS {
-    Depends on the sub-command. Please refer to sub-command help for details.
+    Depends on the sub-command. Refer to the help for the relevant sub-command
+    for details.
 }
 RETURNS {
-    Depends on the sub-command. Please refer to sub-command help for details.
+    Depends on the sub-command. Refer to the help for the relevant sub-command
+    for details.
 }
 EXAMPLE {
-    Please refer to sub-command help for examples.
+     Refer to the help for the relevant sub-command for details.
 }
 SUBCMDS {
     copy-debug-log set-debug-log set-log-level log
 }
 }
 
-    ::xsdb::setcmdmeta {plm copy-debug-log} brief {Copy PLM debug log}
+    ::xsdb::setcmdmeta {plm copy-debug-log} brief {Copy PLM debug log.}
     ::xsdb::setcmdmeta {plm copy-debug-log} description {
 SYNOPSIS {
     plm copy-debug-log <addr>
@@ -6952,17 +7002,17 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {plm set-log-level} brief {Configure PLM log level}
+    ::xsdb::setcmdmeta {plm set-log-level} brief {Configure PLM log level.}
     ::xsdb::setcmdmeta {plm set-log-level} description {
 SYNOPSIS {
     plm set-log-level <level>
         Configure the PLM log level. This can be less than or equal to the
         level set during the compile time.
         The following levels are supported.
-            0x1 - Unconditional messages (DEBUG_PRINT_ALWAYS)
-            0x2 - General debug messages (DEBUG_GENERAL)
-            0x3 - More debug information (DEBUG_INFO)
-            0x4 - Detailed debug information (DEBUG_DETAILED)
+            0x1 is for unconditional messages (DEBUG_PRINT_ALWAYS).
+            0x2 is for general debug messages (DEBUG_GENERAL).
+            0x3 is for more debug information (DEBUG_INFO).
+            0x4 is for detailed debug information (DEBUG_DETAILED).
 }
 RETURNS {
     Nothing, if successful. Error, otherwise.
@@ -6973,7 +7023,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {plm log} brief {Retrieve the PLM log}
+    ::xsdb::setcmdmeta {plm log} brief {Retrieve the PLM log.}
     ::xsdb::setcmdmeta {plm log} description {
 SYNOPSIS {
     plm log [options]
@@ -6986,16 +7036,16 @@ OPTIONS {
 
     -log-mem-addr <addr>
         Specify the memory address from which the PLM log should be retrieved.
-        By default, the address and log size are obtained by triggerring IPI
-        commands to PLM. If PLM doesn't respond to IPI commands, default address
+        By default, the address and log size are obtained by triggering IPI
+        commands to PLM. If PLM does not respond to IPI commands, default address
         0xf2019000 is used. This option can be used to change default address.
         If either memory address or log size is specified, then the address and
-        size are not retrieved from PLM. If only one of address or size options
+        size are not retrieved from PLM. If only one of the address or size options
         is specified, default value is used for the other option. See below for
         description about log size.
 
     -log-size <size in bytes>
-        Specify the log buffer size. If this option is not specified, then the
+        Specify the log buffer size. If this option is not specified, the
         default size of 1024 bytes is used, only when the log memory information
         cannot be retrieved from PLM.
 }
@@ -7600,22 +7650,22 @@ SYNOPSIS {
 NOTE {
     If no target is selected or if the current target is not a
     supported FPGA device, and only one supported FPGA device is found
-    in the targets list, then this device will be configured.
+    in the targets list, this device will be configured.
 }
 OPTIONS {
     -file <bitstream-file>
         Specify file containing bitstream.
 
     -partial
-        Configure FPGA without first clearing current configuration.
-        This options should be used while configuring partial bitstreams
+        Configure FPGA without first clearing the current configuration.
+        This option should be used while configuring partial bitstreams
         created before 2014.3 or any partial bitstreams in binary format.
 
     -no-revision-check
-        Disable bitstream vs silicon revision revision compatibility check.
+        Disable bitstream versus silicon revision revision compatibility check.
 
     -skip-compatibility-check
-        Disable bitstream vs FPGA device compatibility check.
+        Disable bitstream versus FPGA device compatibility check.
 
     -state
         Return whether the FPGA is configured.
@@ -7645,10 +7695,10 @@ RETURNS {
     Depends on options used.
 
     -file, -partial
-        Nothing, if fpga is configured, or an error if the configuration failed.
+        Nothing, if FPGA is configured, or an error if the configuration failed.
 
     One of the other options
-        Configutation value.
+        Configuration value.
 }
 }
 
@@ -7870,7 +7920,7 @@ RETURNS {
     }
     namespace export bpadd
     setcmdmeta bpadd categories {breakpoints}
-    setcmdmeta bpadd brief {Set a Breakpoint/Watchpoint.}
+    setcmdmeta bpadd brief {Set a breakpoint/watchpoint.}
     setcmdmeta bpadd description {
 SYNOPSIS {
     bpadd <options>
@@ -7880,32 +7930,32 @@ SYNOPSIS {
 }
 OPTIONS {
     -addr <breakpoint-address>
-        Specify the address at which the Breakpoint should be set.
+        Specify the address at which the breakpoint should be set.
 
     -file <file-name>
-        Specify the <file-name> in which the Breakpoint should be set.
+        Specify the <file-name> in which the breakpoint should be set.
 
     -line <line-number>
-        Specify the <line-number> within the file, where Breakpoint should be
+        Specify the <line-number> within the file where the breakpoint should be
         set.
 
     -type <breakpoint-type>
-        Specify the Breakpoint type
+        Specify the breakpoint type
         <breakpoint-type> can be one of the values below:
-        auto = Auto - Breakpoint type is chosen by hw_server/TCF agent.
-               This is the default type
-        hw   = Hardware Breakpoint
-        sw   = Software Breakpoint
+        auto = Auto-breakpoint type is chosen by the hw_server/TCF agent.
+               This is the default type.
+        hw   = hardware breakpoint.
+        sw   = software breakpoint.
 
     -mode <breakpoint-mode>
         Specify the access mode that will trigger the breakpoint.
         <breakpoint-mode> can be a bitwise OR of the values below:
-        0x1  = Triggered by a read from the breakpoint location
-        0x2  = Triggered by a write to the breakpoint location
-        0x4  = Triggered by an instruction execution at the breakpoint location
-               This is the default for Line and Address breakpoints
-        0x8  = Triggered by a data change (not an explicit write) at the
-               breakpoint location
+        0x1 is triggered by a read from the breakpoint location.
+        0x2 is triggered by a write to the breakpoint location.
+        0x4 is triggered by an instruction execution at the breakpoint location.
+               This is the default for line and address breakpoints.
+        0x8 is triggered by a data change (not an explicit write) at the
+               breakpoint location.
 
     -enable <mode>
         Specify initial enablement state of breakpoint.  When <mode>
@@ -7914,7 +7964,7 @@ OPTIONS {
 
     -ct-input <list> -ct-output <list>
         Specify input and output cross triggers.  <list> is a list of
-        numbers identifying the cross trigger pin.  For Zynq 0-7 is
+        numbers identifying the cross trigger pin.  For Zynq 0-7 it is
         CTI for core 0, 8-15 is CTI for core 1, 16-23 is CTI ETB and
         TPIU, and 24-31 is CTI for FTM.
 
@@ -7923,33 +7973,33 @@ OPTIONS {
         applicable for cross trigger breakpoints and when DBGACK is
         used as breakpoint input.
         0 = trigger every time core is stopped (default).
-        1 = supress trigger on stepping over a code breakpoint.
-        2 = supress trigger on any kind of stepping.
+        1 = suppress trigger on stepping over a code breakpoint.
+        2 = suppress trigger on any kind of stepping.
 
     -properties <dict>
         Specify advanced breakpoint properties.
 
     -meta-data <dict>
-        Specify meta-data of advanced breakpoint properties.
+        Specify metadata of advanced breakpoint properties.
 
     -target-id <id>
-        Specify a target id for which the breakpoint should be set. A breakpoint
+        Specify a target ID for which the breakpoint should be set. A breakpoint
         can be set for all the targets by specifying the <id> as "all".
-        If this option is not used, then the breakpoint is set for the active
+        If this option is not used, the breakpoint is set for the active
         target selected through targets command. If there is no active target,
-        then the breakpoint is set for all targets.
+        the breakpoint is set for all targets.
 }
 RETURNS {
     Breakpoint id or an error if invalid target id is specified.
 }
 NOTE {
     Breakpoints can be set in XSDB before connecting to hw_server/TCF agent.
-    If there is an active target when a Breakpoint is set, the Breakpoint
+    If there is an active target when a breakpoint is set, the breakpoint
     will be enabled only for that active target. If there is no active target,
-    the Breakpoint will be enabled for all the targets. target-id option can be
-    used to set a breakpoint for a specific target, or all targets.
+    the breakpoint will be enabled for all the targets. The target-id option can
+    be used to set a breakpoint for a specific target, or all targets.
     An address breakpoint or a file:line breakpoint can also be set without the
-    options -addr, -file or -line. For address breakpoints, specify the address
+    options -addr, -file, or -line. For address breakpoints, specify the address
     as an argument, after all other options. For file:line breakpoints, specify
     the file name and line number in the format <file>:<line>, as an argument,
     after all other options.
@@ -7964,7 +8014,7 @@ EXAMPLE {
         Breakpoint type is chosen by hw_server/TCF agent.
 
     bpadd -file test.c -line 23 -type hw
-        Set a Hardware Breakpoint at test.c:23.
+        Set a hardware breakpoint at test.c:23.
 
     bpadd -target-id all 0x100
         Set a breakpoint for all targets, at address 0x100.
@@ -7973,7 +8023,7 @@ EXAMPLE {
         Set a breakpoint for target 2, at line 23 in test.c.
 
     bpadd -addr &fooVar -type hw -mode 0x3
-        Set a Read_Write Watchpoint on variable fooVar.
+        Set a read/write watchpoint on variable fooVar.
 
     bpadd -ct-input 0 -ct-output 8
         Set a cross trigger to stop Zynq core 1 when core 0 stops.
@@ -8043,12 +8093,12 @@ EXAMPLE {
     }
     namespace export bpremove
     setcmdmeta bpremove categories {breakpoints}
-    setcmdmeta bpremove brief {Remove Breakpoints/Watchpoints.}
+    setcmdmeta bpremove brief {Remove breakpoints/watchpoints.}
     setcmdmeta bpremove description {
 SYNOPSIS {
     bpremove <id-list> | -all
-        Remove the Breakpoints/Watchpoints specified by <id-list> or
-        remove all the breakpoints when -all option is used.
+        Remove the breakpoints/watchpoints specified by <id-list> or
+        remove all the breakpoints when the -all option is used.
 }
 OPTIONS {
     -all
@@ -8060,13 +8110,13 @@ RETURNS {
 }
 EXAMPLE {
     bpremove 0
-        Remove Breakpoint 0.
+        Remove breakpoint 0.
 
     bpremove 1 2
-        Remove Breakpoints 1 and 2.
+        Remove breakpoints 1 and 2.
 
     bpremove -all
-        Remove all Breakpoints.
+        Remove all breakpoints.
 }
 }
 
@@ -8107,12 +8157,12 @@ EXAMPLE {
     }
     namespace export bpdisable
     setcmdmeta bpdisable categories {breakpoints}
-    setcmdmeta bpdisable brief {Disable Breakpoints/Watchpoints.}
+    setcmdmeta bpdisable brief {Disable breakpoints/watchpoints.}
     setcmdmeta bpdisable description {
 SYNOPSIS {
     bpdisable <id-list> | -all
-        Disable the Breakpoints/Watchpoints specified by <id-list>  or
-	disable all the breakpoints when -all option is used.
+        Disable the breakpoints/watchpoints specified by <id-list> or
+        disable all the breakpoints when the -all option is used.
 }
 OPTIONS {
     -all
@@ -8124,13 +8174,13 @@ RETURNS {
 }
 EXAMPLE {
     bpdisable 0
-        Disable Breakpoint 0.
+        Disable breakpoint 0.
 
     bpdisable 1 2
-        Disable Breakpoints 1 and 2.
+        Disable breakpoints 1 and 2.
 
     bpdisable -all
-        Disable all Breakpoints.
+        Disable all breakpoints.
 }
 }
 
@@ -8285,12 +8335,12 @@ EXAMPLE {
     }
     namespace export bplist
     setcmdmeta bplist categories {breakpoints}
-    setcmdmeta bplist brief {List Breakpoints/Watchpoints.}
+    setcmdmeta bplist brief {List breakpoints/watchpoints.}
     setcmdmeta bplist description {
 SYNOPSIS {
     bplist
-        List all the Beakpoints/Watchpoints along with brief status
-        for each Breakpoint and the target on which it is set.
+        List all the breakpoints/watchpoints along with brief status
+        for each breakpoint and the target on which it is set.
 }
 RETURNS {
     List of breakpoints.
@@ -8343,13 +8393,13 @@ RETURNS {
     }
     namespace export bpstatus
     setcmdmeta bpstatus categories {breakpoints}
-    setcmdmeta bpstatus brief {Print Breakpoint/Watchpoint status.}
+    setcmdmeta bpstatus brief {Print breakpoint/watchpoint status.}
     setcmdmeta bpstatus description {
 SYNOPSIS {
     bpstatus <id>
-        Print the status of a Breakpoint/Watchpoint specified by <id>.
-        Status includes the target information for which the Breakpoint is active
-        and also Breakpoint hitcount or error message.
+        Print the status of a breakpoint/watchpoint specified by <id>.
+        Status includes the target information for which the breakpoint is
+        active and also the breakpoint hit count or error message.
 }
 OPTIONS {
     None
@@ -8452,25 +8502,25 @@ RETURNS {
     }
     namespace export jtagterminal
     setcmdmeta jtagterminal categories {streams}
-    setcmdmeta jtagterminal brief {Start/Stop Jtag based hyper-terminal.}
+    setcmdmeta jtagterminal brief {Start/stop JTAG-based hyperterminal.}
     setcmdmeta jtagterminal description {
 SYNOPSIS {
     jtagterminal [options]
-        Start/Stop a Jtag based hyper-terminal to communicate with
-        ARM DCC or MDM UART interface.
+        Start/stop a JTAG-based hyperterminal to communicate with the
+        Arm DCC or MDM UART interface.
 }
 NOTE {
-    Select a MDM or ARM/MicroBlaze processor target before runnning this command.
+    Select a MDM or Arm/MicroBlaze processor target before running this command.
 }
 OPTIONS {
     -start
-        Start the Jtag Uart terminal. This is the default option.
+        Start the JTAG UART terminal. This is the default option.
 
     -stop
-        Stop the Jtag Uart terminal.
+        Stop the JTAG UART terminal.
 
     -socket
-        Return the socket port number, instead of starting the terminal.
+        Return the socket port number instead of starting the terminal.
         External terminal programs can be used to connect to this port.
 }
 RETURNS {
@@ -8593,25 +8643,25 @@ RETURNS {
     }
     namespace export readjtaguart
     setcmdmeta readjtaguart categories {streams}
-    setcmdmeta readjtaguart brief {Start/Stop reading from Jtag Uart.}
+    setcmdmeta readjtaguart brief {Start/stop reading from JTAG UART.}
     setcmdmeta readjtaguart description {
 SYNOPSIS {
     readjtaguart [options]
-        Start/Stop reading from the ARM DCC or MDM Uart Tx interface.
-        Jtag Uart output can be printed on stdout or redirected to a file.
+        Start/stop reading from the Arm DCC or MDM UART TX interface.
+        The JTAG UART output can be printed on stdout or redirected to a file.
 }
 NOTE {
-    Select a MDM or ARM/MicroBlaze processor target before runnning this command.
+    Select an MDM or Arm processor target before running this command.
 
-    While running a script in non-interactive mode, output from Jtag uart
-    may not be written to the log, until "readjtaguart -stop" is used.
+    While running a script in non-interactive mode, the output from JTAG UART
+    cannot be written to the log until "readjtaguart -stop" is used.
 }
 OPTIONS {
     -start
-        Start reading the Jtag Uart output.
+        Start reading the JTAG UART output.
 
     -stop
-        Stop reading the Jtag Uart output.
+        Stop reading the JTAG UART output.
 
     -handle <file-handle>
         Specify the file handle to which the data should be redirected.
@@ -8619,17 +8669,17 @@ OPTIONS {
 }
 EXAMPLE {
     readjtaguart
-        Start reading from the Jtag Uart and print the output on stdout.
+        Start reading from the JTAG UART and print the output on stdout.
 
     set fp [open test.log w]; readjtaguart -start -handle $fp
-        Start reading from the Jtag Uart and print the output to test.log.
+        Start reading from the JTAG UART and print the output to test.log.
 
     readjtaguart -stop
-        Stop reading from the Jtag Uart.
+        Stop reading from the JTAG UART.
 }
 RETURNS {
     Nothing, if successful.
-    Error string, if data cannot be read from the Jtag Uart.
+    Error string, if data cannot be read from the JTAG UART.
 }
 }
 
@@ -9019,41 +9069,42 @@ RETURNS {
     }
     namespace export loadhw
     setcmdmeta loadhw categories {miscellaneous}
-    setcmdmeta loadhw brief {Load a Vivado HW design.}
+    setcmdmeta loadhw brief {Load a Vivado hardware design.}
     setcmdmeta loadhw description {
 SYNOPSIS {
     loadhw [options]
-        Load a Vivado HW design, and set the memory map for the current target.
-        If the current target is a parent for a group of processors, memory map
-        is set for all its child processors. If current target is a processor,
-        memory map is set for all the child processors of it's parent.
-        This command returns the HW design object.
+        Load a Vivado hardware design, and set the memory map for the current
+        target. If the current target is a parent for a group of processors, the
+        memory map is set for all of its child processors. If current target is
+        a processor, the memory map is set for all the child processors of its
+        parent. This command returns the hardware design object.
 }
 OPTIONS {
     -hw
-        HW design file.
+        Hardware design file.
 
     -list
         Return a list of open designs for the targets.
 
     -mem-ranges [list {start1 end1} {start2 end2}]
-        List of memory ranges from which the memory map should be set. Memory
-        map is not set for the addresses outside these ranges. If this option
-        is not specified, then memory map is set for all the addresses in the
-        hardware design.
+        List of memory ranges from which the memory map should be set. The
+        memory map is not set for the addresses outside these ranges. If this
+        option is not specified, the memory map is set for all the addresses in
+        the hardware design.
 }
 RETURNS {
-    Design object, if the HW design is loaded and memory map is set successfully.
-    Error string, if the HW design cannot be opened.
+    Design object, if the hardware design is loaded and the memory map is set
+    successfully.
+    Error string, if the hardware design cannot be opened.
 }
 EXAMPLE {
     targets -filter {name =~ "APU"}; loadhw design.xsa
-        Load the HW design named design.hdf and set memory map for all the
-        child processors of APU target.
+        Load the hardware design named design.hdf and set the memory map for all
+        the child processors of the APU target.
 
     targets -filter {name =~ "xc7z045"}; loadhw design.xsa
-        Load the HW design named design.hdf and set memory map for all the
-        child processors for which xc7z045 is the parent.
+        Load the hardware design named design.hdf and set the memory map for all
+        the child processors for which xc7z045 is the parent.
 }
 }
 
@@ -9097,17 +9148,17 @@ EXAMPLE {
     }
     namespace export loadipxact
     setcmdmeta loadipxact categories {miscellaneous}
-    setcmdmeta loadipxact brief {Load registers definitions from ipxact file}
+    setcmdmeta loadipxact brief {Load register definitions from ipxact file.}
     setcmdmeta loadipxact description {
 SYNOPSIS {
     loadipxact [options] [ipxact-xml]
-        Load memory mapped register definitions from a ipxact-xml file, or clear
-        previously loaded definitions and return to built-in definitions, or
-        return the xml file that is currently loaded.
+        Load memory mapped register definitions from an ipxact-xml file, or
+        clear previously loaded definitions and return to built-in definitions,
+        or return the XML file that is currently loaded.
 }
 OPTIONS {
     -clear
-        Clear definitions loaded from ipxact file and return to built-in
+        Clear definitions loaded from the ipxact file and return to built-in
         definitions.
 
     -list
@@ -9115,8 +9166,8 @@ OPTIONS {
 }
 RETURNS {
     Nothing, if the ipxact file is loaded, or previously loaded definitions are
-    cleared sucessfully. Error string, if load/clear failed.
-    xml file path if -list option is used, and xml file is previously loaded.
+    cleared sucessfully. Error string, if load/clear fails.
+    XML file path if -list option is used, and XML file is previously loaded.
 }
 EXAMPLE {
     loadipxact <xml-file>
@@ -9124,17 +9175,17 @@ EXAMPLE {
         format.
 
     loadipxact -clear
-        Clear previously loaded register definitions from a xml file, and return
-        to built-in definitions.
+        Clear previously loaded register definitions from an XML file, and
+        return to built-in definitions.
 
     loadipxact -list
-        Return the xml file that is currently loaded.
+        Return the XML file that is currently loaded.
 }
 NOTE {
-    Select a target that supports physical memory accesses, to load memory
-    mapped register definitions. For example, APU, RPU, PSU and Versal targets
+    Select a target that supports physical memory accesses to load memory
+    mapped register definitions. For example, APU, RPU, PSU, and Versal targets
     support physical memory accesses. Processor cores (A9, R5, A53, A72, etc.)
-    support virtual memory acceses.
+    support virtual memory accesses.
 }
 }
 
@@ -9224,16 +9275,17 @@ NOTE {
     }
     namespace export unloadhw
     setcmdmeta unloadhw categories {miscellaneous}
-    setcmdmeta unloadhw brief {Unload a Vivado HW design.}
+    setcmdmeta unloadhw brief {Unload a Vivado hardware design.}
     setcmdmeta unloadhw description {
 SYNOPSIS {
     unloadhw
-        Close the Vivado HW design which was opened during loadhw command, and
-	clear the memory map for the current target.
-        If the current target is a parent for a group of processors, memory map
-        is cleared for all its child processors. If the current target is a
-        processor, memory map is cleared for all the child processors of it's
-        parent. This command does not clear memory map explicitly set by users.
+        Close the Vivado hardware design which was opened during the loadhw
+        command, and clear the memory map for the current target.
+        If the current target is a parent for a group of processors, the memory
+        map is cleared for all its child processors. If the current target is a
+        processor, the memory map is cleared for all the child processors of its
+        parent. This command does not clear the memory map explicitly set by
+        users through the memmap command.
 }
 RETURNS {
     Nothing.
@@ -9435,19 +9487,19 @@ RETURNS {
     }
     namespace export mdm_drwr
     setcmdmeta mdm_drwr categories {miscellaneous}
-    setcmdmeta mdm_drwr brief {Write to MDM Debug Register.}
+    setcmdmeta mdm_drwr brief {Write to MDM debug register.}
     setcmdmeta mdm_drwr description {
 SYNOPSIS {
     mdm_drwr [options] <cmd> <data> <bitlen>
-        Write to MDM Debug Register.  cmd is 8-bit MDM command to
-        access a Debug Register.  data is the register value and
-        bitlen is the register width.
+        Write to MDM debug register. <cmd> is an 8-bit MDM command to
+        access a debug register.  <data> is the register value and
+        <bitlen> is the register width.
 }
 OPTIONS {
     -target-id <id>
-        Specify a target id representing MicroBlaze Debug Module or
+        Specify a target id representing the MicroBlaze debug module or
         MicroBlaze instance to access.  If this option is not used and
-        -user is not specified, then the current target is used.
+        '-user' is not specified, the current target is used.
 
     -user <bscan number>
         Specify user bscan port number.
@@ -9457,7 +9509,7 @@ RETURNS {
 }
 EXAMPLE {
     mdm_drwr 8 0x40 8
-        Write to MDM Break/Reset Control Reg.
+        Write to MDM break/reset control register.
 }
 }
 
@@ -9569,19 +9621,19 @@ EXAMPLE {
     }
     namespace export mb_drwr
     setcmdmeta mb_drwr categories {miscellaneous}
-    setcmdmeta mb_drwr brief {Write to MicroBlaze Debug Register.}
+    setcmdmeta mb_drwr brief {Write to MicroBlaze debug register.}
     setcmdmeta mb_drwr description {
 SYNOPSIS {
     mb_drwr [options] <cmd> <data> <bitlen>
-        Write to MicroBlaze Debug Register available on MDM. cmd is
-        8-bit MDM command to access a Debug Register.  data is the
-        register value and bitlen is the register width.
+        Write to the MicroBlaze debug register available on MDM. <cmd> is
+        an 8-bit MDM command to access a debug register.  <data> is the
+        register value and <bitlen> is the register width.
 }
 OPTIONS {
     -target-id <id>
-        Specify a target id representing MicroBlaze instance to
+        Specify a target id representing a MicroBlaze instance to
         access.  If this option is not used and -user is not
-        specified, then the current target is used.
+        specified, the current target is used.
 
     -user <bscan number>
         Specify user bscan port number.
@@ -9594,7 +9646,7 @@ RETURNS {
 }
 EXAMPLE {
     mb_drwr 1 0x282 10
-        Write to MB Control Reg.
+        Write to MB control register.
 }
 }
 
@@ -9666,19 +9718,19 @@ EXAMPLE {
     }
     namespace export mdm_drrd
     setcmdmeta mdm_drrd categories {miscellaneous}
-    setcmdmeta mdm_drrd brief {Read from MDM Debug Register.}
+    setcmdmeta mdm_drrd brief {Read from MDM debug register.}
     setcmdmeta mdm_drrd description {
 SYNOPSIS {
     mdm_drrd [options] <cmd> <bitlen>
-        Read a MDM Debug Register.  cmd is 8-bit MDM command to access
-        a Debug Register and bitlen is the register width.  Returns
+        Read an MDM debug register. <cmd> is an 8-bit MDM command to access
+        a debug register and <bitlen> is the register width.  Returns
         hex register value.
 }
 OPTIONS {
     -target-id <id>
-        Specify a target id representing MicroBlaze Debug Module or
+        Specify a target id representing the MicroBlaze debug module or
         MicroBlaze instance to access.  If this option is not used and
-        -user is not specified, then the current target is used.
+        -user is not specified, the current target is used.
 
     -user <bscan number>
         Specify user bscan port number.
@@ -9688,7 +9740,7 @@ RETURNS {
 }
 EXAMPLE {
     mdm_drrd 0 32
-        Read XMDC ID Reg.
+        Read XMDC ID register.
 }
 }
 
@@ -10245,24 +10297,24 @@ SYNOPSIS {
         CPU registers, or any operator, but pre-processor macros defined
         through #define are not supported. CPU registers can be specified
         in the format {$r1}, where r1 is the register name.
-        Elements of a complex data types like a structure can be accessed
-        through '.' operator. For example, var1.int_type refers to int_type
-        element in var1 struct.
+        Elements of complex data types, like structures, can be accessed
+        through the '.' operator. For example, the var1.int_type refers to the
+        int_type element in the var1 struct.
         Array elements can be accessed through their indices. For example,
         array1[0] refers to the element at index 0 in array1.
 }
 OPTIONS {
     -add <expression>
-        Add the <expression> to auto expression list. The values or definitions
-        of the expressions in auto expression list are displayed when expression
-        name is not specified. Frequently used expressions should be added to
-        the auto expression list.
+        Add the <expression> to the auto expression list. The values or
+        definitions of the expressions in the auto expression list are displayed
+        when the expression name is not specified. Frequently used expressions
+        should be added to the auto expression list.
 
     -defs [expression]
-        Return the expression definitions like address, type, size and RW flags.
-        Not all definitions are available for all the expressions. For example,
-        address is available only for variables and not when the expression
-        includes an operator.
+        Return the expression definitions like address, type, size, and RW
+        flags. Not all definitions are available for all the expressions.
+        For example, the address is available only for variables and not when
+        the expression includes an operator.
 
     -dict [expression]
         Return the result in Tcl dict format, with variable names as dict keys
@@ -10282,7 +10334,7 @@ OPTIONS {
 RETURNS {
     The return value depends on the options used.
 
-    <none> or -add
+    -add or <none>
         Expression value(s)
 
     -defs
@@ -10291,7 +10343,7 @@ RETURNS {
     -remove or -set
         Nothing
 
-    Error string, if expression value  cannot be read or set.
+    Error string, if the expression value cannot be read or set.
 }
 EXAMPLE {
     print Int_Glob
@@ -10325,7 +10377,7 @@ EXAMPLE {
     print -remove Microseconds
         Remove the expression Microseconds from auto expression list.
 
-    print {r1}
+    print {$r1}
         Return the value of CPU register r1.
 }
 }
@@ -10411,19 +10463,19 @@ EXAMPLE {
 SYNOPSIS {
     locals [options] [variable-name [variable-value]]
         Get or set the value of a variable specified by <variable-name>.
-        When variable name and value are not specified, values of all the
+        When the variable name and value are not specified, values of all the
         local variables are returned.
-        Elements of a complex data types like a structure can be accessed
-        through '.' operator. For example, var1.int_type refers to int_type
-        element in var1 struct.
+        Elements of complex data types like structures can be accessed
+        through the '.' operator. For example, the var1.int_type refers to the
+        int_type element in the var1 struct.
         Array elements can be accessed through their indices. For example,
         array1[0] refers to the element at index 0 in array1.
 }
 OPTIONS {
     -defs
-        Return the variable definitions like address, type, size and RW flags.
+        Return the variable definitions like address, type, size, and RW flags.
 
-    -dict [expression]
+    -dict
         Return the result in Tcl dict format, with variable names as dict keys
         and variable values as dict values. For complex data like structures,
         names are in the form of parent.child.
@@ -10454,23 +10506,29 @@ EXAMPLE {
         Set the value of the local variable Int_Loc to 23.
 
     locals tmp_var.var1.int_type
-        Return the value of int_type element in var1 struct, where var1
-        is a member of tmp_var struct.
+        Return the value of the int_type element in the var1 struct, where var1
+        is a member of the tmp_var struct.
 
     locals tmp_var.var1.array1[0]
         Return the value of the element at index 0 in array array1. array1 is
-        a member of var1 struct, which is in turn a member of tmp_var struct.
+        a member of the var1 struct, which is in turn a member of the tmp_var
+        struct.
 }
 }
 
     proc backtrace {args} {
 	set options {
+	    {maxframes "max stack frames" {default "10" args 1}}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options]
 
 	if { $params(help) } {
 	    return [help [lindex [info level 0] 0]]
+	}
+
+	if { ($params(maxframes) < -1) || ($params(maxframes) == 0 )} {
+	    error {"invalid -maxframes argument, must be -1 or positive integer"}
 	}
 
 	set params(chan) [getcurchan]
@@ -10480,7 +10538,7 @@ EXAMPLE {
 	dict lappend arg actions {
 	    set stack {}
 	    set cache_misses 0
-	    set ret [get_ctx_data $chan $ctx StackTrace:children]
+	    set ret [get_stacktrace_children $chan $ctx $maxframes]
 	    if { [lindex $ret 0] != "" } {
 		error [lindex $ret 0]
 	    }
@@ -10552,9 +10610,13 @@ EXAMPLE {
 	dict set arg result {
 	    set stack
 	}
+
 	set stack [process_tcf_actions $arg]
 	set result ""
-	foreach level [lreverse $stack] {
+	if { $params(maxframes) < 0 } {
+	    set stack [lreverse $stack]
+	}
+	foreach level $stack {
 	    set entry [lindex $level 0]
 	    set m2s [lindex $level 1 1 0]
 	    set sym [lindex $level 2 1]
@@ -10608,14 +10670,31 @@ EXAMPLE {
     setcmdmeta backtrace brief {Stack back trace.}
     setcmdmeta backtrace description {
 SYNOPSIS {
-    backtrace
+    backtrace [options]
         Return stack trace for current target.  Target must be
         stopped.  Use debug information for best result.
-        'bt' is alias for backtrace and can be used interchangeably.
+        The alias for backtrace is 'bt' and can be used interchangeably.
+}
+OPTIONS {
+    -maxframes <num>
+        Maximum number of frames in stack trace. The default value is 10.
+        The actual number of frames could be less depending on program state.
+        To read all the available frames, use -1.
+
 }
 RETURNS {
-    Stack Trace, if successful.
-    Error string, if Stack Trace cannot be read from the target.
+    Stack trace, if successful.
+    Error string, if stack trace cannot be read from the target.
+}
+EXAMPLE {
+    bt
+        Return top 10 frames from stack trace.
+
+    bt -maxframes 5
+        Return top 5 frames from stack trace.
+
+    bt -maxframes -1
+        Return all the available frames from stack trace.
 }
 }
 setcmdmeta bt categories {running}
@@ -10661,6 +10740,14 @@ setcmdmeta bt description [dict get $::xsdb::command_metadata backtrace descript
 
     proc set_silent_mode { mode } {
 	variable silent_mode [expr !!$mode]
+    }
+
+    proc set_stream_sock_poll_delay { delay } {
+	::tcf::sync_eval [list ::streamsock::set_update_poll_delay $delay]
+    }
+
+    proc get_stream_sock_poll_delay {} {
+	return [::tcf::sync_eval [list ::streamsock::get_update_poll_delay]]
     }
 
     proc configparams { args } {
@@ -10712,6 +10799,12 @@ setcmdmeta bt description [dict get $::xsdb::command_metadata backtrace descript
 		type boolean
 		getter get_silent_mode
 		setter set_silent_mode
+	    }
+	    stream-sock-poll-delay {
+		description "delay between jtagterminal socket polls in milliseconds"
+		type integer
+		getter get_stream_sock_poll_delay
+		setter set_stream_sock_poll_delay
 	    }
 	}
 
@@ -10816,15 +10909,15 @@ setcmdmeta bt description [dict get $::xsdb::command_metadata backtrace descript
     }
     namespace export configparams
     setcmdmeta configparams categories {miscellaneous}
-    setcmdmeta configparams brief {List, get or set configuration parameters.}
+    setcmdmeta configparams brief {List, get, or set configuration parameters.}
     setcmdmeta configparams description {
 SYNOPSIS {
     configparams <options>
-        List name and description for available configuration
+        List the name and description for available configuration
         parameters.  Configuration parameters can be global or
         connection specific, therefore the list of available
-        configuration parameters and their value may change
-        depending on current connection.
+        configuration parameters and their value might change
+        depending on the current connection.
 
     configparams <options> <name>
         Get configuration parameter value(s).
@@ -10838,8 +10931,8 @@ OPTIONS {
 
     -context [context]
         Specify context of value to get or set.  The default context
-	is "" which represet the global default.  Not all options
-	support context specific values.
+	is "", which represents the global default.  Not all options
+	support context-specific values.
 
     -target-id <id>
         Specify target id or value to get or set.  This is an
@@ -10852,19 +10945,19 @@ RETURNS {
         List of parameters and description of each parameter.
 
     <parameter name>
-        Parameter value or error, if unsupported paramter is specified.
+        Parameter value or error, if unsupported parameter is specified.
 
     <parameter name> <parameter value>
-        Nothing if the value is set, or error, if unsupported parameter is
+        Nothing if the value is set, or error, if the unsupported parameter is
         specified.
 }
 EXAMPLE {
     configparams force-mem-accesses 1
-        Disable access protection for dow, mrd, and mwr commands.
+        Disable access protection for the <dow>, <mrd>, and <mwr> commands.
 
     configparams vitis-launch-timeout 100
-        Change the Vitis launch timeout to 100 seconds, used for running
-        Vitis batch mode commands.
+        Change the Vitis launch timeout to 100 seconds (used for running
+        Vitis batch mode commands).
 }
 }
 
@@ -10897,15 +10990,15 @@ EXAMPLE {
 SYNOPSIS {
     version [options]
         Get Vitis or hw_server version. When no option is specified,
-        Vitis build version is returned.
+        the Vitis build version is returned.
 }
 OPTIONS {
     -server
-        Get the hw_server build version, for the active connection.
+        Get the hw_server build version for the active connection.
 }
 RETURNS {
-    Vitis or hw_Server version, on success.
-    Error string, if server verison is requested when there is no connection.
+    Vitis or hw_server version, on success.
+    Error string, if server version is requested when there is no connection.
 }
 }
 
@@ -10958,8 +11051,8 @@ RETURNS {
     setcmdmeta profile description {
 SYNOPSIS {
     profile [options]
-        Configure and run the GNU profiler. The profiling needs to enabled while
-        building bsp and application to be profiled.
+        Configure and run the GNU profiler. Profiling must be enabled while
+        building the BSP and application to be profiled.
 }
 OPTIONS {
     -freq <sampling-freq>
@@ -10967,12 +11060,13 @@ OPTIONS {
 
     -scratchaddr <addr>
         Scratch memory for storing the profiling related data. It needs to be
-        assigned carefully, as it should not overlap with the program sections.
+        assigned carefully, because it should not overlap with the program
+        sections.
 
     -out <file-name>
         Name of the output file for writing the profiling data. This option also
         runs the profiler and collects the data.
-        If file name is not specified, profiling data is written to gmon.out.
+        If a file name is not specified, profiling data is written to gmon.out.
 }
 RETURNS {
     Depends on options used.
@@ -11486,10 +11580,10 @@ EXAMPLE {
 SYNOPSIS {
     mbprofile [options]
         Configure and run the MB profiler, a non-intrusive profiler
-        for profiling the application running on MB. The output file is
+        for profiling the application running on MicroBlaze. The output file is
         generated in gmon.out format. The results can be viewed using
-        gprof editor. In case of cycle count, an annotated disassembly
-        file is also generated clearly marking time taken for execution
+        the gprof editor. In case of cycle count, an annotated disassembly
+        file is also generated clearly marking the time taken for execution
         of instructions.
 }
 OPTIONS {
@@ -11500,12 +11594,13 @@ OPTIONS {
         High address of the profiling address range.
 
     -freq <value>
-        Microblaze clock frequency in Hz.
-        Default is 100MHz.
+        MicroBlaze clock frequency in Hz.
+        Default is 100 MHz.
 
     -count-instr
-        Count no. of executed instructions.
-        By default no. of clock cycles of executed instructions are counted.
+        Count number of executed instructions.
+        By default, the number of clock cycles of executed instructions are
+        counted.
 
     -cumulate
         Cumulative profiling.
@@ -11518,9 +11613,9 @@ OPTIONS {
         Disable/stop profiling.
 
     -out <filename>
-        Output profiling data to file.
-        <filename> Name of the output file for writing the profiling data.
-        If file name is not specified, profiling data is written to gmon.out.
+        Output profiling data to file. <filename> Name of the output file for 
+        writing the profiling data. If the file name is not specified, profiling
+        data is written to gmon.out.
 }
 RETURNS {
     Depends on options used.
@@ -11545,7 +11640,7 @@ EXAMPLE {
 
     mbprofile -count-instr
         Configure the mb-profiler to profile for entire program address
-        range to count no. of instructions executed.
+        range to count the number of instructions executed.
 }
 }
 
@@ -11686,7 +11781,7 @@ OPTIONS {
 
     -con
         Output trace after resuming execution of active target until a
-        breakpoint is hit. Atleast one breakpoint or watchpoint must be
+        breakpoint is hit. At least one breakpoint or watchpoint must be
         set to use this option.
         This option is only available with embedded trace.
 
@@ -11781,6 +11876,7 @@ package require xsdb::tfile
 package require xsdb::server
 package require xsdb::gdbremote
 package require xsdb::svf
+package require xsdb::stapl
 package require xsdb::device
 
 if { [catch {
@@ -11794,6 +11890,11 @@ if { [catch {
     }
 } msg] && [string first "xsct" [file tail [info nameofexecutable]]] != -1 } {
     error "error loading hsi package: $msg"
+}
+if { [string first "xsct" [file tail [info nameofexecutable]]] != -1 &&
+     [catch {package require sdtgen} msg ] } {
+     puts "WARNING: sdtgen package cannot be loaded. System Device tree commands will not \n\
+           \rbe available"
 }
 
 

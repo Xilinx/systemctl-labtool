@@ -364,6 +364,7 @@ RETURNS {
             {jreg-name "JTAG register name" {args 1}}
             {hex "Format data in hex"}
             {jtag-target "Jtag target to use instead of current target" {args 1}}
+            {slr "Select which SLR to read" {args 1}}
             {help "command help"}
         }
         array set params [::xsdb::get_options args $options 0]
@@ -391,6 +392,7 @@ RETURNS {
         dict set arg aborting ""
         dict set arg cancelled 0
         dict set arg state ""
+        dict set arg slr 0
 
         set node ""
         if {[info exists params(jtag-target)]} {
@@ -405,6 +407,10 @@ RETURNS {
             if {$node == ""} {
                 error "no JTAG target with id $params(jtag-target)"
             }
+        }
+
+        if {[info exists params(slr)]} {
+            dict set arg slr $params(slr)
         }
 
         if {$node == ""} {
@@ -439,9 +445,10 @@ RETURNS {
                     error [format "Could not find JTAG register %s" ${jreg-name}]
                 }
                 dict set arg regdef $regdef
-                send_action_command $argvar Xicom jtagRegGet ss EB [list $node $regctx] {
+                send_action_command $argvar Xicom jtagRegGet ssi EB [list $node $regctx $slr] {
                     if { [lindex $data 0] != "" } {
-                        error [lindex $data 0]
+                        dict set arg err [lindex $data 0]
+                        return
                     }
                     proc fix_name {name} {
                         return [string toupper [string map {_ { }} $name]]

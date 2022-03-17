@@ -32,5 +32,6 @@ package ifneeded xsdb::server 0.1 [list source [file join [file dirname [info sc
 package ifneeded xsdb::gdbremote 0.1 [list source [file join [file dirname [info script]] gdbremote.tcl]]
 package ifneeded sdk 0.1 [list source [file join [file dirname [info script]] sdk.tcl]]
 package ifneeded xsdb::svf 0.1 [list source [file join [file dirname [info script]] svf.tcl]]
+package ifneeded xsdb::stapl 0.1 [list source [file join [file dirname [info script]] stapl.tcl]]
 package ifneeded xsdb::device 0.1 [list source [file join [file dirname [info script]] device.tcl]]
 source [file join [file dirname [info script]] pkgIndex2.tcl]
