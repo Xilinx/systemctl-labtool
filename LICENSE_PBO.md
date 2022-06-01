@@ -1,6 +1,6 @@
 ## Binary Only License
 
-Copyright © 2021 Xilinx, Inc.
+Copyright © 2022 Xilinx, Inc.
 
 Redistribution and use in binary form only, without modification, is permitted provided that the following 
 conditions are met:
