@@ -497,7 +497,7 @@ DESCRIPTION
         Move JTAG state machine to <new-state> and then generate
         <count> JTAG clocks.  If <clock> is given and <new-state> is
         not a looping state (RESET, IDLE, IRSHIFT, IRPAUSE, DRSHIFT or
-        DRPAUSE) then state machine will move towards RESET state.
+        DRPAUSE), the state machine will move towards RESET state.
 
     sequence irshift [options] [bits [data]]
     sequence drshift [options] bits [data]
@@ -583,7 +583,7 @@ DESCRIPTION
         Delete sequence.
 }
 RETURNS {
-    Jtag sequence object.
+    JTAG sequence object.
 }
 EXAMPLE {
     set seqname [jtag sequence]
@@ -1238,9 +1238,9 @@ SYNOPSIS {
         default value when a new hw_server is started.
 }
 RETURNS {
-    Current Jtag frequency, if no arguments are specified, or if Jtag frequency
+    Current JTAG frequency, if no arguments are specified, or if JTAG frequency
     is successfully set.
-    Supported Jtag frequencies, if -list option is used.
+    Supported JTAG frequencies, if -list option is used.
     Error string, if invalid frequency is specified or frequency cannot be set.
 }
 }
@@ -1283,10 +1283,10 @@ SYNOPSIS {
         Set JTAG clock skew for current scan chain.
 }
 NOTE {
-    Clock skew property is not supported by some Jtag cables.
+    Clock skew property is not supported by some JTAG cables.
 }
 RETURNS {
-    Current Jtag clock skew, if no arguments are specified, or if Jtag skew is
+    Current JTAG clock skew, if no arguments are specified, or if JTAG skew is
     successfully set.
     Error string, if invalid skew is specified or skew cannot be set.
 }
@@ -1463,7 +1463,7 @@ SYNOPSIS {
     jtag servers [options]
         List, open, and close JTAG servers.  JTAG servers are use to
         implement support for different types of JTAG cables.  An open
-        JTAG server will enumberate or connect to available JTAG ports.
+        JTAG server will enumerate or connect to available JTAG ports.
 }
 OPTIONS {
     -list
@@ -1480,13 +1480,13 @@ OPTIONS {
         Specifies server to close.
 }
 RETURNS {
-    Depends on the options specified
+    Depends on the options specified.
 
     <none>, -list
-	List of open Jtag servers.
+	List of open JTAG servers.
 
     -format
-	List of supported Jtag servers.
+	List of supported JTAG servers.
 
     -close
 	Nothing if the server is closed, or an error string, if invalid server
@@ -1497,10 +1497,10 @@ EXAMPLE {
         List opened servers and number of associated ports.
 
     jtag servers -open xilinx-xvc:localhost:10200
-        Connect to XVC server on host localhost port 10200
+        Connect to XVC server on host localhost port 10200.
 
     jtag servers -close xilinx-xvc:localhost:10200
-        Close XVC server for host localhost port 10200
+        Close XVC server for host localhost port 10200.
 }
 }
 

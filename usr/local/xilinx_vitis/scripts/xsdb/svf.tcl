@@ -186,7 +186,7 @@ namespace eval ::xsdb::svf {
     }
     namespace export config
     ::xsdb::setcmdmeta {svf config} categories {svf}
-    ::xsdb::setcmdmeta {svf config} brief {Configure options for SVF file}
+    ::xsdb::setcmdmeta {svf config} brief {Configure options for SVF file.}
     ::xsdb::setcmdmeta {svf config} description {
 SYNOPSIS {
     svf config [options]
@@ -222,17 +222,17 @@ OPTIONS {
 	This is used to specify user bscan port to which MDM is connected.
 
     -mb-chunksize <size in bytes>
-	This used to specify the chunk size in bytes for each transaction
-	while downloading.
-	Supported only for Microblaze processors.
+	This option is used to specify the chunk size in bytes for each
+	transaction while downloading.
+	Supported only for MicroBlaze processors.
 
     -exec-mode
-        Execution mode for ARM v8 cores. Supported modes are
-        a32 - v8 core is setup in 32 bit mode.
-        a64 - v8 core is setup in 64 bit mode.
+        Execution mode for Arm v8 cores. Supported modes are
+        a32 (v8 core is set up in 32-bit mode)
+        and a64 (v8 core is set up in 64-bit mode).
 }
 RETURNS {
-    Nothing
+    Nothing.
 }
 EXAMPLE {
     svf config -scan-chain {0x14738093 12 0x5ba00477 4} -device-index 1 \
@@ -273,14 +273,14 @@ EXAMPLE {
     }
     namespace export generate
     ::xsdb::setcmdmeta {svf generate} categories {svf}
-    ::xsdb::setcmdmeta {svf generate} brief {Generate recorded SVF file}
+    ::xsdb::setcmdmeta {svf generate} brief {Generate recorded SVF file.}
     ::xsdb::setcmdmeta {svf generate} description {
 SYNOPSIS {
     svf generate
 	Generate SVF file in the path specified in the config command.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
     If successful, this command returns nothing.
@@ -320,14 +320,14 @@ EXAMPLE {
    }
     namespace export mwr
     ::xsdb::setcmdmeta {svf mwr} categories {svf}
-    ::xsdb::setcmdmeta {svf mwr} brief {Record memory write to SVF file}
+    ::xsdb::setcmdmeta {svf mwr} brief {Record memory write to SVF file.}
     ::xsdb::setcmdmeta {svf mwr} description {
 SYNOPSIS {
     svf mwr <address> <value>
 	Write <value> to the memory address specified by <address>.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
     If successful, this command returns nothing.
@@ -445,7 +445,7 @@ EXAMPLE {
     }
     namespace export dow
     ::xsdb::setcmdmeta {svf dow} categories {svf}
-    ::xsdb::setcmdmeta {svf dow} brief {Record elf download to SVF file}
+    ::xsdb::setcmdmeta {svf dow} brief {Record elf download to SVF file.}
     ::xsdb::setcmdmeta {svf dow} description {
 SYNOPSIS {
     svf dow <elf file>
@@ -455,7 +455,7 @@ SYNOPSIS {
 	Record downloading of binary file <file> to the memory.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
     If successful, this command returns nothing.
@@ -604,17 +604,17 @@ EXAMPLE {
     }
     namespace export stop
     ::xsdb::setcmdmeta {svf stop} categories {svf}
-    ::xsdb::setcmdmeta {svf stop} brief {Record stopping of core to SVF file}
+    ::xsdb::setcmdmeta {svf stop} brief {Record stopping of core to SVF file.}
     ::xsdb::setcmdmeta {svf stop} description {
 SYNOPSIS {
     svf stop
 	Record suspending execution of current target to SVF file.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
-    Nothing
+    Nothing.
 }
 EXAMPLE {
     svf stop
@@ -802,17 +802,17 @@ EXAMPLE {
     }
     namespace export con
     ::xsdb::setcmdmeta {svf con} categories {svf}
-    ::xsdb::setcmdmeta {svf con} brief {Record resuming of core to SVF file}
+    ::xsdb::setcmdmeta {svf con} brief {Record resuming of core to SVF file.}
     ::xsdb::setcmdmeta {svf con} description {
 SYNOPSIS {
     svf con
 	Record resuming the execution of active target to SVF file.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
-    Nothing
+    Nothing.
 }
 EXAMPLE {
     svf con
@@ -1103,17 +1103,17 @@ EXAMPLE {
     }
     namespace export delay
     ::xsdb::setcmdmeta {svf delay} categories {svf}
-    ::xsdb::setcmdmeta {svf delay} brief {Record delay in tcks to SVF file}
+    ::xsdb::setcmdmeta {svf delay} brief {Record delay in tcks to SVF file.}
     ::xsdb::setcmdmeta {svf delay} description {
 SYNOPSIS {
     svf delay <delay in tcks>
 	Record delay in tcks to SVF file.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
-    Nothing
+    Nothing.
 }
 EXAMPLE {
     svf delay 1000
@@ -1214,7 +1214,7 @@ SYNOPSIS {
     System Reset
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
     If successful, this command returns nothing.

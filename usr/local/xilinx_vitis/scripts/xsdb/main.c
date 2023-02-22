@@ -71,7 +71,7 @@
 #define RDI_VERSION "0000.0"
 #endif
 
-static const char programName[] = "Xilinx System Debugger (XSDB)";
+static const char programName[] = "System Debugger (XSDB)";
 static Tcl_ThreadId main_threadid;
 static int loadIni = 1;
 
@@ -148,12 +148,14 @@ static void ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE type, const char *fmt, ...)
 
 static const char* time_stamp = __TIME__;
 static const char* date_stamp = __DATE__;
+
 static void display_banner()
 {
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"\n");
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"****** %s v%s\n", programName, RDI_VERSION);
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"  **** Build date : %s-%s\n", date_stamp, time_stamp);
-    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.\n\n");
+    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.\n");
+    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 2022-%s Advanced Micro Devices, Inc. All Rights Reserved.\n\n", date_stamp + 7);
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"\n");
 }
 

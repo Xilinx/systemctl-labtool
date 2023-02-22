@@ -506,25 +506,36 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
 				foreach ph [$f get_phlist] {
 				    dict with ph {
 					if { $type == 1 } {
+					    if { [dict get $arg vaddr] } {
+						set mem_addr $vaddr
+					    } else {
+						set mem_addr $paddr
+					    }
+					    # if one the elf section uses TCM, clear the entire TCM
+					    if { $clear_tcm && $mem_addr < $tcm_size } {
+						set clear_tcm 0
+						set tcm_cleared 1
+						lappend actions [list clear 0x0 $tcm_size]
+						incr total_bytes $tcm_size
+					    }
 					    if { $filesz > 0 } {
-						if { [dict get $arg vaddr] } {
-						    lappend actions [list copy $offset $vaddr $filesz]
-						} else {
-						    lappend actions [list copy $offset $paddr $filesz]
-						}
+						lappend actions [list copy $offset $mem_addr $filesz]
 						incr total_bytes $filesz
 					    }
-					    if { $filesz < $memsz } {
-						if { [dict get $arg vaddr] } {
-						    set mem_addr $vaddr
-						} else {
-						    set mem_addr $paddr
+					    if { $clear && $filesz < $memsz } {
+						set clearsz [expr $memsz - $filesz]
+						if { $tcm_cleared == 1 && $mem_addr + $filesz < $tcm_size } {
+						    if { $mem_addr + $filesz + $clearsz <= $tcm_size } {
+							# nop, since TCM is already cleared
+							continue
+						    } else {
+							# clear the memory outsize TCM boundary
+							set clearsz [expr $mem_addr + $filesz + $clearsz - $tcm_size]
+							set mem_addr $tcm_size
+						    }
 						}
-						if { $clear || ($clear_tcm && $mem_addr < $tcm_size) } {
-						    set clearsz [expr $memsz - $filesz]
-						    lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
-						    incr total_bytes $clearsz
-						}
+						lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
+						incr total_bytes $clearsz
 					    }
 					}
 				    }
@@ -1767,7 +1778,7 @@ namespace eval ::xsdb {
     variable silent_mode [expr !$::tcl_interactive]
     variable tcm_clear_warnings 1
     variable subsystem_activate_warnings 1
-    variable ipi_channel_mask_warnings 1
+    variable ipi_channel_warnings 1
     variable ipxactfiles [dict create]
 
     dict set expr_fmt_dict 1 [dict create 1 cu 2 su 4 iu 8 wu]
@@ -3589,7 +3600,7 @@ RETURNS {
     }
     namespace export rwr
     setcmdmeta rwr categories {registers}
-    setcmdmeta rwr brief {Write to register}
+    setcmdmeta rwr brief {Write to register.}
     setcmdmeta rwr description {
 SYNOPSIS {
     rwr <reg> <value>
@@ -3612,6 +3623,27 @@ EXAMPLE {
         Write 0x0 to register r8 in group usr.
 }
 }
+
+    proc crc16_ccitt { data } {
+	set crc_table {
+	    0 4489 8978 12955 17956 22445 25910 29887 35912 40385 44890 48851 51820 56293 59774 63735 4225 264 13203 8730 22181 18220 30135 25662 40137 36160 49115 44626 56045 52068 63999 59510
+	    8450 12427 528 5017 26406 30383 17460 21949 44362 48323 36440 40913 60270 64231 51324 55797 12675 8202 4753 792 30631 26158 21685 17724 48587 44098 40665 36688 64495 60006 55549 51572
+	    16900 21389 24854 28831 1056 5545 10034 14011 52812 57285 60766 64727 34920 39393 43898 47859 21125 17164 29079 24606 5281 1320 14259 9786 57037 53060 64991 60502 39145 35168
+	    48123 43634 25350 29327 16404 20893 9506 13483 1584 6073 61262 65223 52316 56789 43370 47331 35448 39921 29575 25102 20629 16668 13731 9258 5809 1848 65487 60998 56541 52564
+	    47595 43106 39673 35696 33800 38273 42778 46739 49708 54181 57662 61623 2112 6601 11090 15067 20068 24557 28022 31999 38025 34048 47003 42514 53933 49956 61887 57398 6337 2376
+	    15315 10842 24293 20332 32247 27774 42250 46211 34328 38801 58158 62119 49212 53685 10562 14539 2640 7129 28518 32495 19572 24061 46475 41986 38553 34576 62383 57894 53437 49460
+	    14787 10314 6865 2904 32743 28270 23797 19836 50700 55173 58654 62615 32808 37281 41786 45747 19012 23501 26966 30943 3168 7657 12146 16123 54925 50948 62879 58390 37033 33056
+	    46011 41522 23237 19276 31191 26718 7393 3432 16371 11898 59150 63111 50204 54677 41258 45219 33336 37809 27462 31439 18516 23005 11618 15595 3696 8185 63375 58886 54429 50452
+	    45483 40994 37561 33584 31687 27214 22741 18780 15843 11370 7921 3960}
+	set crc 0xFFFF
+	binary scan $data "cu*" hexdata
+	foreach c $hexdata {
+	    if {$c != "\r"} {
+		set crc [expr [lindex $crc_table [expr [expr $crc ^ $c ] & 0xFF ] ] ^ [expr $crc >> 8] ]
+	    }
+	}
+	return [expr ~$crc & 0xFFFF]
+    }
 
     proc get_event_table {} {
 	set et [::tcf::sync_eval {
@@ -3664,14 +3696,19 @@ EXAMPLE {
 		    }
 		    set fd [dict get $maps "handle"]
 		    if { [lindex $info 1] == "Data"} {
-			puts $fd $key
+			puts -nonewline $fd $key
 		    }
 		    if { [lindex $info 1] == "Notes"} {
 			seek $fd 0
 			set filedata [read $fd]
 			seek $fd 0
-			puts $fd $key
-			puts $fd $filedata
+			append key $filedata
+			puts -nonewline $fd $key
+			if { [dict get $maps "checksum"] == 1 } {
+			    puts -nonewline $fd "CRC [format %x [crc16_ccitt $key]];"
+			} else {
+			    puts -nonewline $fd "CRC 0;"
+			}
 			unset filedata
 			dict set stapl::stapltable $curchan "done" 1
 		    }
@@ -5504,6 +5541,7 @@ EXAMPLE {
 	set params(ctx) [getcurtarget]
 
 	set params(clear_tcm) 0
+	set params(tcm_cleared) 0
 	if  { !$params(skip-tcm-clear) } {
 	    set rc [lindex [::tcf::cache_eval $params(chan) [list get_context_cache_client $params(chan) $params(ctx) RunControl:context]] 1]
 	    if { [dict_get_safe $rc CPUType] == "ARM" && [dict_get_safe $rc ARMType] == "Cortex-R5" } {
@@ -5513,8 +5551,8 @@ EXAMPLE {
 			set params(clear_tcm) 1
 			set params(tcm_size) 0x40000
 			set tcm_clear_warnings 0
-			puts "WARNING: Uninitialized elf sections like bss, stack, etc. will be cleared\n\
-			      \r         if they use R5 TCM. Use skip-tcm-clear to skip this.\n\
+			puts "WARNING: R5 TCM will be cleared if any of the elf sections use TCM.\n\
+			      \r         Use -skip-tcm-clear to skip this.\n\
 			      \r         Further warnings will be suppressed"
 			break
 		    }
@@ -5655,10 +5693,10 @@ OPTIONS {
         Clear uninitialized data (bss).
 
     -skip-tcm-clear
-        Clear uninitialized data sections that are part of the Versal TCM. This
-        is needed when ELFs are loaded through debugger, so that TCM banks are
-        initialized properly. When the ELFs are part of the PDI, PLM initializes
-        the TCM, before loading the ELFs.
+        When the R5 elfs are part of the PDI and use TCM, PLM initializes TCM
+        before loading the elfs. Debugger does the same when the elfs are loaded
+        through debugger, so that TCM banks are initialized properly. Use this
+        option to skip  initializing the TCM.
 
     -keepsym
         Keep previously downloaded ELFs in the list of symbol files. Default
@@ -5922,7 +5960,7 @@ RETURNS {
     }
     namespace export mask_poll
     setcmdmeta mask_poll categories {memory}
-    setcmdmeta mask_poll brief {Read an address and poll the bit specified by mask}
+    setcmdmeta mask_poll brief {Read an address and poll the bit specified by mask.}
     setcmdmeta mask_poll description {
 SYNOPSIS {
     mask_poll <addr> <mask> [expected-value] [sleep] [timeout]
@@ -5964,7 +6002,7 @@ RETURNS {
     }
     namespace export mask_write
     setcmdmeta mask_write categories {memory}
-    setcmdmeta mask_write brief {Read, modify and write an address}
+    setcmdmeta mask_write brief {Read, modify, and write an address.}
     setcmdmeta mask_write description {
 SYNOPSIS {
     mask_write <addr> <mask>
@@ -6004,7 +6042,7 @@ RETURNS {
     }
     namespace export init_ps
     setcmdmeta init_ps categories {memory}
-    setcmdmeta init_ps brief {Run PS initialization sequence}
+    setcmdmeta init_ps brief {Run PS initialization sequence.}
     setcmdmeta init_ps description {
 SYNOPSIS {
     init_ps <init_data>
@@ -6033,7 +6071,7 @@ RETURNS {
     proc rst { args } {
 	variable reset_warnings
 	variable subsystem_activate_warnings
-	variable ipi_channel_mask_warnings
+	variable ipi_channel_warnings
 
 	set options {
 	    {processor "processor reset"}
@@ -6326,24 +6364,26 @@ RETURNS {
 				      \r         Use skip-activate-subsystem to skip this.\n\
 				      \r         Further warnings will be suppressed"
 			    }
-			    # Check if PLM has masked IPI channel 5 from PMC_IMR
 			    setcurtarget [dict get $rc ID]
-			    set ipi5_status [expr [mrd -value 0xFF320014] & 0x80]
-			    if { $ipi5_status == 0 } {
-				if { [catch {set ret [pmc generic -response-size 1 0x10241 0x1c000000]} msg] || $ret != 0x0 && $ret != 0x01070000 } {
-				    if { $msg == "" } {
-					set msg $ret
-				    }
-				    puts "WARNING: Cannot activate default subsystem. This may cause runtime issues if PM\n\
-				          \r         API is used. PLM status: $msg"
+			    set ret ""
+			    if { [catch {set ret [pmc generic -response-size 1 0x10241 0x1c000000]} msg] || $ret != 0x0 && $ret != 0x01070000 } {
+				puts "WARNING: Cannot activate default subsystem. This may cause runtime issues if PM\n\
+				      \r         API is used."
+				if { $ret != "" } {
+				    puts "         PLM status: $msg"
 				}
-			    } else {
-				if { $ipi_channel_mask_warnings == 1 } {
-				    set ipi_channel_mask_warnings 0
-				    puts "WARNING: IPI channel 5 is not enabled, skipping activation of default subsystem.\n\
-				          \r         This may cause runtime issues if PM API is used. Please enable IPI\n\
-					  \r         channel 5 in Vivado design to activate default subsystem.\n\
-					  \r         Further warnings will be suppressed"
+				if { $ipi_channel_warnings == 1 } {
+				    set ipi_channel_warnings 0
+				    if { $msg == "timeout waiting for request to be acknowledged" } {
+					puts "         Check if IPI channel 5 is enabled in Vivado design. This is needed for\n\
+					      \r         activating default subsystem. Further warnings will be suppressed."
+				    } elseif { [string first "AXI AP transaction error" $msg] != -1 } {
+					puts "         Cannot access IPI registers. Check if IPI channel 5 in Vivado design is\n\
+					      \r         configured to allow debugger access. This is needed for activating\n\
+					      \r         default subsystem. Further warnings will be suppressed."
+				    } elseif { $msg != "" } {
+					puts "         $msg"
+				    }
 				}
 			    }
 			    setcurtarget $ctx
@@ -6481,43 +6521,43 @@ RETURNS {
 	dict set pmccmds get_board [dict create cmd 0x1030115 args {addr max-size} resp {status response-length}]
 
 	# PM commands
-	dict set pmccmds request_device [dict create cmd 0x04020D args {node-id capabilities qos ack-type}]
-	dict set pmccmds release_device [dict create cmd 0x01020E args {node-id}]
-	dict set pmccmds set_requirement [dict create cmd 0x04020F args {node-id capabilities qos ack-type}]
-	dict set pmccmds self_suspend [dict create cmd 0x050207 args {node-id wakeup-latency power-state resume-addr}]
-	dict set pmccmds request_suspend [dict create cmd 0x040206 args {subsystem-id ack-type wakeup-latency power-state}]
-	dict set pmccmds request_wakeup [dict create cmd 0x04020A args {node-id resume-addr ack-type}]
-	dict set pmccmds abort_suspend [dict create cmd 0x020209 args {abort-reason node-id}]
-	dict set pmccmds setup_wakeup_source [dict create cmd 0x03020B args {subsystem-id node-id flag}]
-	dict set pmccmds get_device_status [dict create cmd 0x010203 args {node-id} resp {status requirement usage}]
-	dict set pmccmds device_ioctl [dict create cmd 0x020222 args {node-id ioctl-id}]
-	dict set pmccmds set_max_latency [dict create cmd 0x020210 args {node-id latency}]
+	dict set pmccmds request_device [dict create cmd 0x04020D args {node-id capabilities qos ack-type} resp {cmd_status}]
+	dict set pmccmds release_device [dict create cmd 0x01020E args {node-id} resp {cmd_status}]
+	dict set pmccmds set_requirement [dict create cmd 0x04020F args {node-id capabilities qos ack-type} resp {cmd_status}]
+	dict set pmccmds self_suspend [dict create cmd 0x050207 args {node-id wakeup-latency power-state resume-addr} resp {cmd_status} ]
+	dict set pmccmds request_suspend [dict create cmd 0x040206 args {subsystem-id ack-type wakeup-latency power-state} resp {cmd_status} ]
+	dict set pmccmds request_wakeup [dict create cmd 0x04020A args {node-id resume-addr ack-type} resp {cmd_status} ]
+	dict set pmccmds abort_suspend [dict create cmd 0x020209 args {abort-reason node-id} resp {cmd_status}]
+	dict set pmccmds setup_wakeup_source [dict create cmd 0x03020B args {subsystem-id node-id flag} resp {cmd_status}]
+	dict set pmccmds get_device_status [dict create cmd 0x010203 args {node-id} resp {cmd_status status requirement usage}]
+	dict set pmccmds device_ioctl [dict create cmd 0x020222 args {node-id ioctl-id} resp {cmd_status}]
+	dict set pmccmds set_max_latency [dict create cmd 0x020210 args {node-id latency} resp {cmd_status}]
 
-	dict set pmccmds reset_assert [dict create cmd 0x020211 args {node-id flag}]
-	dict set pmccmds reset_get_state [dict create cmd 0x010212 args {node-id} resp {reset-state}]
+	dict set pmccmds reset_assert [dict create cmd 0x020211 args {node-id flag} resp {cmd_status}]
+	dict set pmccmds reset_get_state [dict create cmd 0x010212 args {node-id} resp {cmd_status reset-state}]
 
-	dict set pmccmds pin_control_request [dict create cmd 0x01021C args {node-id}]
-	dict set pmccmds pin_control_release [dict create cmd 0x01021D args {node-id}]
-	dict set pmccmds pin_get_fuction [dict create cmd 0x01021E args {node-id} resp {function-id}]
-	dict set pmccmds pin_set_fuction [dict create cmd 0x02021F args {node-id function-id}]
-	dict set pmccmds pin_get_config_param [dict create cmd 0x020220 args {node-id param-id} resp {param-value}]
-	dict set pmccmds pin_set_config_param [dict create cmd 0x030221 args {node-id param-id param-value}]
+	dict set pmccmds pin_control_request [dict create cmd 0x01021C args {node-id} resp {cmd_status}]
+	dict set pmccmds pin_control_release [dict create cmd 0x01021D args {node-id} resp {cmd_status}]
+	dict set pmccmds pin_get_fuction [dict create cmd 0x01021E args {node-id} resp {cmd_status function-id}]
+	dict set pmccmds pin_set_fuction [dict create cmd 0x02021F args {node-id function-id} resp {cmd_status} ]
+	dict set pmccmds pin_get_config_param [dict create cmd 0x020220 args {node-id param-id} resp {cmd_status param-value}]
+	dict set pmccmds pin_set_config_param [dict create cmd 0x030221 args {node-id param-id param-value} resp {cmd_status}]
 
-	dict set pmccmds clock_enable [dict create cmd 0x010224 args {node-id}]
-	dict set pmccmds clock_disable [dict create cmd 0x010225 args {node-id}]
-	dict set pmccmds clock_get_state [dict create cmd 0x010226 args {node-id} resp {state}]
-	dict set pmccmds clock_set_divider [dict create cmd 0x020227 args {node-id divider}]
-	dict set pmccmds clock_get_divider [dict create cmd 0x010228 args {node-id} resp {divider}]
-	dict set pmccmds clock_set_parent [dict create cmd 0x01022B args {node-id parent-index}]
-	dict set pmccmds clock_get_parent [dict create cmd 0x01022C args {node-id} resp {parent-index}]
+	dict set pmccmds clock_enable [dict create cmd 0x010224 args {node-id} resp {cmd_status}]
+	dict set pmccmds clock_disable [dict create cmd 0x010225 args {node-id} resp {cmd_status}]
+	dict set pmccmds clock_get_state [dict create cmd 0x010226 args {node-id} resp {cmd_status state}]
+	dict set pmccmds clock_set_divider [dict create cmd 0x020227 args {node-id divider} resp {cmd_status}]
+	dict set pmccmds clock_get_divider [dict create cmd 0x010228 args {node-id} resp {cmd_status divider}]
+	dict set pmccmds clock_set_parent [dict create cmd 0x01022B args {node-id parent-index} resp {cmd_status}]
+	dict set pmccmds clock_get_parent [dict create cmd 0x01022C args {node-id} resp {cmd_status parent-index}]
 
-	dict set pmccmds pll_set_param [dict create cmd 0x030230 args {node-id param-id param-value}]
-	dict set pmccmds pll_set_param [dict create cmd 0x020231 args {node-id param-id} resp {param-value}]
-	dict set pmccmds pll_set_mode [dict create cmd 0x020232 args {node-id pll-mode}]
-	dict set pmccmds pll_get_mode [dict create cmd 0x010232 args {node-id} resp {pll-mode}]
+	dict set pmccmds pll_set_param [dict create cmd 0x030230 args {node-id param-id param-value} resp {cmd_status}]
+	dict set pmccmds pll_set_param [dict create cmd 0x020231 args {node-id param-id} resp {cmd_status param-value}]
+	dict set pmccmds pll_set_mode [dict create cmd 0x020232 args {node-id pll-mode} resp {cmd_status}]
+	dict set pmccmds pll_get_mode [dict create cmd 0x010232 args {node-id} resp {cmd_status pll-mode}]
 
-	dict set pmccmds force_power_down [dict create cmd 0x020208 args {node-id ack-type}]
-	dict set pmccmds system_shutdown [dict create cmd 0x02020C args {shutdown-type sub-type}]
+	dict set pmccmds force_power_down [dict create cmd 0x020208 args {node-id ack-type} resp {cmd_status} ]
+	dict set pmccmds system_shutdown [dict create cmd 0x02020C args {shutdown-type sub-type} resp {cmd_status}]
 
 	# Generic command to allow users to trigger any other commands
 	dict set pmccmds generic [dict create]
@@ -6533,23 +6573,53 @@ RETURNS {
 	set options {
 	    {response-list "ipi response list" {args 1}}
 	    {response-size "ipi response size in words" {args 1}}
-	    {timeout "timeout waiting for command to finish" {default 1000 args 1}}
+	    {timeout "timeout for command to finish" {default 1000 args 1}}
 	}
 	array set params [::xsdb::get_options args $options 0]
 
 	set ipi [lindex $args 0]
 	set args [lrange $args 1 end]
-	set ipi0_mid 0xff300050
-	set ipi0_trig 0xff330000
-	set ipi0_obs 0xff330004
-	set ipi0_pmc_buf 0xff3f0440
-	set ipi0_pmc_resp 0xff3f0460
-	set dap_smid 0x240
+	set device ""
+	set chan [getcurchan]
 
-	mwr -force [expr $ipi0_mid + ($ipi * 8)] $dap_smid
+	set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan [getcurtarget] RunControl:context]] 1]
+	while { [dict_get_safe $rc ParentID] != "" } {
+	    set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan [dict get $rc ParentID] RunControl:context]] 1]
+	}
+	if { ![string compare -length [string length "Versal"] "Versal" [dict get $rc Name]] } {
+	    set idcode [dict get $rc JtagDeviceID]
+	    if { $idcode == 0x4ba06477 } {
+		set device "versalnet"
+	    } elseif { $idcode == 0x6ba00477 } {
+		set device "versal"
+	    }
+	} elseif { ![string compare -length [string length "DPC"] "DPC" [dict get $rc Name]] } {
+	    set idcode [dict get $rc DpcDeviceID]
+	    if { [expr $idcode & 0x0fffffff] == 0x04d80093 || [expr $idcode & 0x0fffffff] == 0x04d81093 || [expr $idcode & 0x0fffffff] == 0x04d82093 } {
+		set device "versalnet"
+	    } elseif { [expr $idcode & 0x0fe00fff] == 0x04c00093 } {
+		set device "versal"
+	    }
+	}
 
-	if { ([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
-	    error "previous ipi request is pending"
+	if { $device == "versalnet" } {
+	    set ipi0_trig     0xeb330000
+	    set ipi0_obs      0xeb330004
+	    set ipi0_pmc_buf  0xeb3f0440
+	    set ipi0_pmc_resp 0xeb3f0460
+	} elseif { $device == "versal" } {
+	    set ipi0_trig     0xff330000
+	    set ipi0_obs      0xff330004
+	    set ipi0_pmc_buf  0xff3f0440
+	    set ipi0_pmc_resp 0xff3f0460
+	} else {
+	    error "selected target is not a versal target"
+	}
+
+	if { [info exists params(response-list)] || [info exists params(response-size)] } {
+	    if {([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
+		error "previous ipi request is pending"
+	    }
 	}
 
 	if { [llength $args] > 8 } {
@@ -6567,16 +6637,17 @@ RETURNS {
 	}
 
 	# Check for ACK only if the command is not reset_assert
-	if { $is_reset == 0 } {
-	    set start [clock milliseconds]
-	    while { ([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
-		set end [clock milliseconds]
-		if { $end - $start > $params(timeout) } {
-		    error "timeout waiting for request to be acknowledged"
+	if { [info exists params(response-list)] || [info exists params(response-size)] } {
+	    if { $is_reset == 0 } {
+		set start [clock milliseconds]
+		while { ([mrd -force -value [expr $ipi0_obs + (0x10000 * $ipi)]] & 0x2) != 0 } {
+		    set end [clock milliseconds]
+		    if { $end - $start > $params(timeout) } {
+			error "timeout waiting for request to be acknowledged"
+		    }
 		}
 	    }
 	}
-
 	set result ""
 	if { [info exists params(response-list)] } {
 	    set count [llength $params(response-list)]
@@ -6592,7 +6663,6 @@ RETURNS {
 
     proc pmc { args } {
 	variable pmccmds
-	set ipi_lock 0xff300090
 
 	set options {
 	    {ipi "ipi buffer to use" {default 5 args 1}}
@@ -6607,9 +6677,6 @@ RETURNS {
 	    return [help [lindex [info level 0] 0]]
 	}
 
-	if { [mrd -force -value $ipi_lock] & 0x1 == 0x1 } {
-	    error "cannot configure ipi registers, lock is enabled"
-	}
 
 	if { [catch {checkint $params(ipi)}] || $params(ipi) < 0 || $params(ipi) > 5 } {
 	    error "invalid ipi $params(ipi): should be 0 - 5"
@@ -6937,7 +7004,7 @@ RETURNS {
     }
     namespace export plm
     ::xsdb::setcmdmeta plm categories {ipi}
-    ::xsdb::setcmdmeta plm brief {PLM logging}
+    ::xsdb::setcmdmeta plm brief {PLM logging.}
     ::xsdb::setcmdmeta plm description {
 SYNOPSIS {
     plm <sub-command> [options]
@@ -6986,7 +7053,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {plm set-debug-log} brief {Configure PLM debug log memory}
+    ::xsdb::setcmdmeta {plm set-debug-log} brief {Configure PLM debug log memory.}
     ::xsdb::setcmdmeta {plm set-debug-log} description {
 SYNOPSIS {
     plm set-debug-log <addr> <size>
@@ -8125,11 +8192,11 @@ EXAMPLE {
     }
     namespace export bpenable
     setcmdmeta bpenable categories {breakpoints}
-    setcmdmeta bpenable brief {Enable Breakpoints/Watchpoints.}
+    setcmdmeta bpenable brief {Enable breakpoints/watchpoints.}
     setcmdmeta bpenable description {
 SYNOPSIS {
     bpenable <id-list> | -all
-        Enable the Breakpoints/Watchpoints specified by <id-list> or
+        Enable the breakpoints/watchpoints specified by <id-list> or
 	enable all the breakpoints when -all option is used.
 }
 OPTIONS {
@@ -8142,13 +8209,13 @@ RETURNS {
 }
 EXAMPLE {
     bpenable 0
-        Enable Breakpoint 0.
+        Enable breakpoint 0.
 
     bpenable 1 2
-        Enable Breakpoints 1 and 2.
+        Enable breakpoints 1 and 2.
 
     bpenable -all
-        Enable all Breakpoints.
+        Enable all breakpoints.
 }
 }
 
@@ -8402,7 +8469,7 @@ SYNOPSIS {
         active and also the breakpoint hit count or error message.
 }
 OPTIONS {
-    None
+    None.
 }
 RETURNS {
     Breakpoint status, if the breakpoint exists.
@@ -8765,11 +8832,11 @@ RETURNS {
 	if { [dict exists $designtable $hw map] } {
 	    set design_map [dict get $designtable $hw map]
 	} else {
-	    set mdm_list [::hsi::get_cells -filter {IP_TYPE == "DEBUG"}]
-	    set proc_list [::hsi::get_cells -filter {IP_TYPE == "PROCESSOR"}]
+	    set mdm_list [::hsi::get_cells -filter {IP_TYPE == "DEBUG"} -hierarchical]
+	    set proc_list [::hsi::get_cells -filter {IP_TYPE == "PROCESSOR"} -hierarchical]
 	    set debug_bridge_list [::hsi::get_cells -filter {IP_NAME == "debug_bridge"} -hierarchical]
 	    foreach p $proc_list {
-		set type [::common::get_property IP_NAME [::hsi::get_cells $p]]
+		set type [::common::get_property IP_NAME [::hsi::get_cells $p -hierarchical]]
 		set mmap [::hsi::utils::get_addr_ranges -dict $hw $p]
 		if { [dict exists $designtable $hw ranges] } {
 		    set ranges [dict get $designtable $hw ranges]
@@ -8793,8 +8860,8 @@ RETURNS {
 		    dict for {periph reg} $hw_data {
 			if { [dict size $reg] != 0 && $add_regs == 1 } {
 			    set load_reg {}
-			    lappend load_reg [subst {Description [::common::get_property IP_NAME [::hsi::get_cells $periph]] ID $periph \
-					    Name [::common::get_property NAME [::hsi::get_cells $periph]] Readable 0}]
+			    lappend load_reg [subst {Description [::common::get_property IP_NAME [::hsi::get_cells $periph -hierarchical]] ID $periph \
+					    Name [::common::get_property NAME [::hsi::get_cells $periph -hierarchical]] Readable 0}]
 			    dict for {reg_name reg_value} $reg {
 				set reg_access [dict get $reg_value access]
 				set reg_readable 1
@@ -8841,14 +8908,14 @@ RETURNS {
 		switch -- $type {
 		    "microblaze" {
 			foreach mdm $mdm_list {
-			    set ports [::common::get_property CONFIG.C_MB_DBG_PORTS [::hsi::get_cells $mdm]]
-			    set bscan_type [::common::get_property CONFIG.C_USE_BSCAN [::hsi::get_cells $mdm]]
+			    set ports [::common::get_property CONFIG.C_MB_DBG_PORTS [::hsi::get_cells $mdm -hierarchical]]
+			    set bscan_type [::common::get_property CONFIG.C_USE_BSCAN [::hsi::get_cells $mdm -hierarchical]]
 			    if { $bscan_type == 2 } {
 				# EXT_BSCAN - parse the connections to find the hierarchy
 				set bscan [get_debug_bridge_bscan_port $mdm "bscan_ext_tdi" $debug_bridge_list]
 				if { $bscan == "" } { set bscan "2.1" }
 			    } else {
-				set bscan [::common::get_property CONFIG.C_JTAG_CHAIN [::hsi::get_cells $mdm]]
+				set bscan [::common::get_property CONFIG.C_JTAG_CHAIN [::hsi::get_cells $mdm -hierarchical]]
 				if { $bscan == "" } { set bscan 2 }
 			    }
 			    for { set i 0 } { $i < $ports } { incr i } {
@@ -8892,6 +8959,8 @@ RETURNS {
 
 	set ctxs [get_all_children $chan $tgt]
 	lappend ctxs $tgt
+	set map {}
+	set mmap {}
 	foreach ctx $ctxs {
 	    if { $ctx == "" || [dict exists $memmap_ctxs $chan $ctx] } {
 		continue
@@ -8930,13 +8999,15 @@ RETURNS {
 			    continue
 			}
 		    }
-		    set map {}
 		    if { [dict exists $memmaptable $chan $ctx] } {
 			set map [dict get $memmaptable $chan $ctx]
 		    }
 
-		    set mmap [dict get $pdata mmap]
-		    dict for {key map_data} $mmap {
+		    dict for {key map_data} [dict get $pdata mmap] {
+			if { [dict exists $mmap $key] } {
+			    continue
+			}
+			dict set mmap $key $map_data
 			if { [dict exists $map_data registers] && [dict get $map_data registers] != "" } {
 			    dict lappend map [dict get $map_data base] \
 					     [dict create Addr [dict get $map_data base] Size [dict get $map_data size] \
@@ -8947,11 +9018,15 @@ RETURNS {
 					      Flags [dict get $map_data flags]]
 			}
 		    }
-		    dict lappend memmaptable $chan $ctx $map
-		    dict set memmap_ctxs $chan $ctx $mmap
-		    update_memory_map $chan $ctx
 		}
 	    }
+	}
+	if { $mmap != "" } {
+	    dict set memmap_ctxs $chan $ctx $mmap
+	}
+	if { $map != "" } {
+	    dict lappend memmaptable $chan $ctx $map
+	    update_memory_map $chan $ctx
 	}
     }
 
@@ -9166,7 +9241,7 @@ OPTIONS {
 }
 RETURNS {
     Nothing, if the ipxact file is loaded, or previously loaded definitions are
-    cleared sucessfully. Error string, if load/clear fails.
+    cleared successfully. Error string, if load/clear fails.
     XML file path if -list option is used, and XML file is previously loaded.
 }
 EXAMPLE {
@@ -10341,7 +10416,7 @@ RETURNS {
         Expression definition(s)
 
     -remove or -set
-        Nothing
+        Nothing.
 
     Error string, if the expression value cannot be read or set.
 }
@@ -11613,7 +11688,7 @@ OPTIONS {
         Disable/stop profiling.
 
     -out <filename>
-        Output profiling data to file. <filename> Name of the output file for 
+        Output profiling data to file. <filename> Name of the output file for
         writing the profiling data. If the file name is not specified, profiling
         data is written to gmon.out.
 }
