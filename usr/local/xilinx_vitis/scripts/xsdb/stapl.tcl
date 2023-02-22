@@ -35,6 +35,7 @@ namespace eval ::xsdb::stapl {
 	    {handle "file handle" {args 1}}
 	    {out "output file path" {args 1}}
 	    {scan-chain "scan chain info" {args 1}}
+	    {checksum "calclates checksum of the stapl data"}
 	    {help "command help"}
 	}
 
@@ -43,12 +44,10 @@ namespace eval ::xsdb::stapl {
 	if { $params(help) } {
 	    return [help [lindex [info level 0] 0]]
 	}
-
 	if { !([info exists params(scan-chain)] ^ [info exists params(part)]) || \
 	    !([info exists params(handle)] ^ [info exists params(out)]) } {
 	    error "invalid arguments, specify -scan-chain/-part and -handle/-out options."
 	}
-
 	if { [info exists params(scan-chain)] } {
 	    foreach dev $params(scan-chain) {
 		if { ![dict exists $dev name] && ![dict exists $dev idcode] } {
@@ -56,11 +55,15 @@ namespace eval ::xsdb::stapl {
 		}
 	    }
 	}
-
 	if { [info exists params(out)] } {
 	    dict set stapltable $xsdb::curchan "out" $params(out)
 	} else {
 	    dict set stapltable $xsdb::curchan "handle" $params(handle)
+	}
+	if { $params(checksum) } {
+	    dict set stapltable $xsdb::curchan "checksum" 1
+	} else {
+	    dict set stapltable $xsdb::curchan "checksum" 0
 	}
 
 	set target [format "target%03d" [lindex [split $xsdb::curchan "#"] 1 ]]
@@ -111,40 +114,13 @@ namespace eval ::xsdb::stapl {
     }
     namespace export config
     ::xsdb::setcmdmeta {stapl config} categories {stapl}
-    ::xsdb::setcmdmeta {stapl config} brief {configure stapl target}
+    ::xsdb::setcmdmeta {stapl config} brief {Configure stapl target.}
     ::xsdb::setcmdmeta {stapl config} description {
 SYNOPSIS {
     stapl config <options>
         Create a hw_target (jtag chain) and add all the hw_devices given in
         the scan-chain list to the hw_target. It also configures the stapl
         output file where the stapl data is recorded.
-
-    This example demonstrates the correct order of creating a stapl file
-    for a single device on a stapl target.
-        connect
-        stapl config -out mystapl.stapl -scan-chain [list [dict create \
-            name xcvc1902 idcode 0 irlen 0 idcode2 0 mask 0]]
-        jtag targets -set -filter {name == "xcvc1902"}
-        stapl start
-        device program <pdipath>
-        stapl stop
-
-    This example demonstrates the correct order of creating a stapl file
-    for multiple devices on a stapl target.
-        connect
-        stapl config -out mystapl.stapl -scan-chain [list [dict create \
-            name xcvc1902 idcode 0 irlen 0 idcode2 0 mask 0] [dict create \
-            xcvm1802 idcode 0 irlen 0 idcode2 0 mask 0]]
-        jtag targets -set -filter {name == "xcvc1902"}
-        targets -set -filter {jtag_device_name == "xcvc1902"}
-        stapl start
-        device program <pdipath>
-        stapl stop
-        jtag targets -set -filter {name == "xcvm1802"}
-        targets -set -filter {jtag_device_name == "xcvm1802"}
-        stapl start
-        device program <pdipath>
-        stapl stop
 }
 OPTIONS {
     -out <filepath>
@@ -173,6 +149,10 @@ OPTIONS {
         List of part names of the Xilinx devices to add to the scan-chain.
         This option works only with Xilinx devices. This option can be
         used instead of the -scan-chain option.
+
+    -checksum
+        Calculate stapl-data CRC and append it to the stapl file. If not
+        specified, CRC 0 is appended.
 }
 NOTE {
     For Xilinx devices, if the device_name or idcode is specified in the
@@ -183,7 +163,6 @@ RETURNS {
     None.
 }
 EXAMPLE {
-    set fp [open <stapl_file_path> a+]
     stapl config -handle $fp -scan-chain [list [dict create name xcvc1902 \
           idcode 0 irlen 0 idcode2 0 mask 0] [dict create name xcvm1802 \
           idcode 0 irlen 0 idcode2 0 mask 0]]
@@ -194,7 +173,7 @@ EXAMPLE {
           name xcvc1902 idcode 0 irlen 0 idcode2 0 mask 0] [dict create \
           name xcvm1802 idcode 0 irlen 0 idcode2 0 mask 0]]
         Same as the previous example, but using the stapl file path as input,
-		instead of the file handle returned by Tcl open command.
+            instead of the file handle returned by Tcl open command.
 
     stapl config -out mystapl.stapl -part xcvc1902
         Add xcvc1902 device to scan-chain, using -part option.
@@ -206,6 +185,32 @@ EXAMPLE {
 
     stapl config -out mystapl.stapl -part [list xcvc1902 xcvm1802]
         Add xcvc1902 and xcvm1802 devices to scan-chain, using the -part option.
+
+    connect
+    stapl config -out mystapl.stapl -scan-chain [list [dict create \
+        name xcvc1902 idcode 0 irlen 0 idcode2 0 mask 0]]
+    jtag targets -set -filter {name == "xcvc1902"}
+    stapl start
+    device program <pdipath>
+    stapl stop
+        The above example demonstrate the correct order for creating a stapl
+            file for a single device on a stapl target.
+
+    connect
+    stapl config -out mystapl.stapl -scan-chain [list [dict create \
+        name xcvc1902 idcode 0 irlen 0 idcode2 0 mask 0] [dict create \
+        xcvm1802 idcode 0 irlen 0 idcode2 0 mask 0]]
+    jtag targets -set -filter {name == "xcvc1902"}
+    targets -set -filter {jtag_device_name == "xcvc1902"}
+    stapl start
+    device program <pdipath>
+    jtag targets -set -filter {name == "xcvm1802"}
+    targets -set -filter {jtag_device_name == "xcvm1802"}
+    stapl start
+    device program <pdipath>
+    stapl stop
+        The above example demonstrate the correct order for creating a stapl
+            file for multiple devices on a stapl target.
 }
 }
 
@@ -229,26 +234,28 @@ EXAMPLE {
 	    error "run stapl config prior to this command"
 	}
 
-	if { [dict exists $stapltable $xsdb::curchan "out"] } {
+	if { [dict exists $stapltable $xsdb::curchan "out"] && ![dict exists $stapltable $xsdb::curchan "handle"] } {
 	    dict set stapltable $xsdb::curchan "handle" [open [dict get $stapltable $xsdb::curchan "out"] a+]
 	}
 
 	dict set stapltable $xsdb::curchan "done" 0
 	::tcf::send_command $xsdb::curchan stapl start s eA [list $::xsdb::jtag::curnode]
 	dict set stapltable $xsdb::curchan "started" 1
+	::tcf::send_command $xsdb::curchan Xicom configReset so{} e [list $::xsdb::jtag::curnode {}]
 	return
     }
     namespace export start
     ::xsdb::setcmdmeta {stapl start} categories {stapl}
-    ::xsdb::setcmdmeta {stapl start} brief {start stapl recording}
+    ::xsdb::setcmdmeta {stapl start} brief {Start stapl recording.}
     ::xsdb::setcmdmeta {stapl start} description {
 SYNOPSIS {
     stapl start
         Start stapl recording.
 }
 NOTE {
-    It is mandatory to call 'stapl start' before 'device program', and
-    'stapl stop' after 'device program' to generate stapl data properly.
+    It is mandatory to call 'stapl start' before programming each device
+    on the scan-chain, and call 'stapl stop' after programming all the devices
+    to generate stapl data properly.
 }
 OPTIONS {
     None.
@@ -296,15 +303,16 @@ RETURNS {
     }
     namespace export stop
     ::xsdb::setcmdmeta {stapl stop} categories {stapl}
-    ::xsdb::setcmdmeta {stapl stop} brief {stop stapl recording}
+    ::xsdb::setcmdmeta {stapl stop} brief {Stop stapl recording.}
     ::xsdb::setcmdmeta {stapl stop} description {
 SYNOPSIS {
     stapl stop
         Stop stapl recording.
 }
 NOTE {
-    It is mandatory to call 'stapl start' before 'device program', and
-    'stapl stop' after 'device program' to generate stapl data properly.
+    It is mandatory to call 'stapl start' before programming each device
+    on the scan-chain, and call 'stapl stop' after programming all the devices
+    to generate stapl data properly.
 }
 OPTIONS {
     None.

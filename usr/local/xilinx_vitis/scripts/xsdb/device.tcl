@@ -334,7 +334,7 @@ namespace eval ::xsdb::device {
     }
     namespace export program
     ::xsdb::setcmdmeta {device program} categories {device}
-    ::xsdb::setcmdmeta {device program} brief {Program PDI/BIT}
+    ::xsdb::setcmdmeta {device program} brief {Program PDI/BIT.}
     ::xsdb::setcmdmeta {device program} description {
 SYNOPSIS {
     device program <file>
@@ -512,7 +512,7 @@ RETURNS {
     }
     namespace export status
     ::xsdb::setcmdmeta {device status} categories {device}
-    ::xsdb::setcmdmeta {device status} brief {Return JTAG Register Status}
+    ::xsdb::setcmdmeta {device status} brief {Return JTAG register status.}
     ::xsdb::setcmdmeta {device status} description {
 SYNOPSIS {
     device status [options] <jtag-register-name>
@@ -639,7 +639,7 @@ RETURNS {
     interp alias {} ::xsdb::device::secdebug {} ::xsdb::device::authjtag
     namespace export secdebug
     ::xsdb::setcmdmeta {device authjtag} categories {device}
-    ::xsdb::setcmdmeta {device authjtag} brief {Secure Debug BIN}
+    ::xsdb::setcmdmeta {device authjtag} brief {Secure debug BIN.}
     ::xsdb::setcmdmeta {device authjtag} description {
 SYNOPSIS {
     device authjtag <file>

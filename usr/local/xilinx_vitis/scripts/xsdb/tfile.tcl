@@ -105,6 +105,7 @@ SYNOPSIS {
         Close specified file handle.
 }
 RETURNS {
+	Nothing.
 }
 }
 
@@ -200,6 +201,7 @@ OPTIONS {
         File offset to write to.
 }
 RETURNS {
+    Nothing.
 }
 }
 
@@ -390,6 +392,7 @@ SYNOPSIS {
         Remove <path>.
 }
 RETURNS {
+    Nothing.
 }
 }
 
@@ -420,6 +423,7 @@ SYNOPSIS {
         Remove directory <path>.
 }
 RETURNS {
+    Nothing.
 }
 }
 
@@ -456,6 +460,7 @@ SYNOPSIS {
         Make directory <path>.
 }
 RETURNS {
+    Nothing.
 }
 }
 
@@ -517,6 +522,7 @@ SYNOPSIS {
         Rename file or directory.
 }
 RETURNS {
+    Nothing.
 }
 }
 
@@ -578,9 +584,9 @@ SYNOPSIS {
         Symlink file or directory.
 }
 RETURNS {
+    Nothing.
 }
 }
-
     proc opendir { args } {
 	variable files
 	set options {

@@ -293,11 +293,11 @@ namespace eval ::sdk {
     }
     namespace export setws
     ::xsdb::setcmdmeta setws categories {projects} [subst $help_prefix]
-    ::xsdb::setcmdmeta setws brief {Set vitis workspace} [subst $help_prefix]
+    ::xsdb::setcmdmeta setws brief {Set Vitis workspace} [subst $help_prefix]
     ::xsdb::setcmdmeta setws description [subst {
 SYNOPSIS {
     [concat $help_prefix setws] \[OPTIONS\] \[path\]
-        Set vitis workspace to <path>, for creating projects.
+        Set Vitis workspace to <path>, for creating projects.
         If <path> does not exist, then the directory is created.
         If <path> is not specified, then current directory is used.
 }
@@ -334,7 +334,7 @@ EXAMPLE {
     }
     namespace export getws
     ::xsdb::setcmdmeta getws categories {projects} [subst $help_prefix]
-    ::xsdb::setcmdmeta getws brief {Get vitis workspace} [subst $help_prefix]
+    ::xsdb::setcmdmeta getws brief {Get Vitis workspace.} [subst $help_prefix]
     ::xsdb::setcmdmeta getws description [subst {
 SYNOPSIS {
     [concat $help_prefix getws]
@@ -907,7 +907,7 @@ RETURNS {
 				error "Illegal arch type $params(arch). must be 32/64"
 			    }
 			} elseif { [string match "psu_cortexa53*" $params(proc)] || [string match "*psv_cortexa72*" $params(proc)] || \
-			    [string match "*psu_cortexa72*" $params(proc)] } {
+			    [string match "*psu_cortexa72*" $params(proc)] || [string match "*cortexa78*" $params(proc)] } {
 			    set archtype 64
 			} else {
 			    set archtype 32
@@ -1150,7 +1150,7 @@ RETURNS {
     }
     namespace export app
     ::xsdb::setcmdmeta app categories {projects}
-    ::xsdb::setcmdmeta app brief {Application project management}
+    ::xsdb::setcmdmeta app brief {Application project management.}
     ::xsdb::setcmdmeta app description {
 SYNOPSIS {
     app <sub-command> [options]
@@ -1169,20 +1169,20 @@ SYNOPSIS {
         by "-help" for more details.
 }
 OPTIONS {
-    Depends on the sub-command. Please refer to sub-command help for details.
+    Depends on the sub-command. Refer to the sub-command help for details.
 }
 RETURNS {
-    Depends on the sub-command. Please refer to sub-command help for details.
+    Depends on the sub-command. Refer to the sub-command help for details.
 }
 EXAMPLE {
-    Please refer to sub-command help for examples.
+    Refer to the sub-command help for examples.
 }
 SUBCMDS {
     build clean config create list remove report switch
 }
 }
 
-    ::xsdb::setcmdmeta {app build} brief {Build application}
+    ::xsdb::setcmdmeta {app build} brief {Build application.}
     ::xsdb::setcmdmeta {app build} description {
 SYNOPSIS {
     app build -name <app-name>
@@ -1202,14 +1202,14 @@ RETURNS {
 }
 EXAMPLE {
     app build -name helloworld
-        Build helloworld application.
+        Build Hello World application.
 
     app build -all
         Build all the application projects in the workspace.
 }
 }
 
-    ::xsdb::setcmdmeta {app clean} brief {Clean application}
+    ::xsdb::setcmdmeta {app clean} brief {Clean application.}
     ::xsdb::setcmdmeta {app clean} description {
 SYNOPSIS {
     app clean -name <app-name>
@@ -1226,11 +1226,11 @@ RETURNS {
 }
 EXAMPLE {
     app clean -name helloworld
-        Clean helloworld application.
+        Clean Hello World application.
 }
 }
 
-    ::xsdb::setcmdmeta {app config} brief {Configure C/C++ build settings of the application}
+    ::xsdb::setcmdmeta {app config} brief {Configure C/C++ build settings of the application.}
     ::xsdb::setcmdmeta {app config} description {
 SYNOPSIS {
     Configure C/C++ build settings for the specified application.
@@ -1318,7 +1318,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {app create} brief {Create an application}
+    ::xsdb::setcmdmeta {app create} brief {Create an application.}
     ::xsdb::setcmdmeta {app create} description {
 SYNOPSIS {
     app create [options] -platform <platform> -domain <domain>
@@ -1412,7 +1412,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {app list} brief {List applications}
+    ::xsdb::setcmdmeta {app list} brief {List applications.}
     ::xsdb::setcmdmeta {app list} description {
 SYNOPSIS {
     app list
@@ -1420,7 +1420,7 @@ SYNOPSIS {
 }
 OPTIONS {
     -dict
-        List all the applications for the workspace in TCL dictionary format.
+        List all the applications for the workspace in Tcl dictionary format.
         Without this option, applications are listed in tabular format.
 }
 RETURNS {
@@ -1432,11 +1432,11 @@ EXAMPLE {
         Lists all the applications in the workspace in tabular format.
 
     app list -dict
-        Lists all the applications in the workspace in TCL dictionary format.
+        Lists all the applications in the workspace in Tcl dictionary format.
 }
 }
 
-    ::xsdb::setcmdmeta {app remove} brief {Delete application}
+    ::xsdb::setcmdmeta {app remove} brief {Delete application.}
     ::xsdb::setcmdmeta {app remove} description {
 SYNOPSIS {
     app remove <app-name>
@@ -1455,12 +1455,12 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {app report} brief {Report details of the application}
+    ::xsdb::setcmdmeta {app report} brief {Report details of the application.}
     ::xsdb::setcmdmeta {app report} description {
 SYNOPSIS {
     app report <app-name>
-        Return details like platform, domain, processor
-        core, OS, etc. of an application.
+        Return details such as the platform, domain, processor
+        core, and OS of an application.
 }
 OPTIONS {
     None.
@@ -1474,7 +1474,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {app switch} brief {Switch the application to use another domain/platform}
+    ::xsdb::setcmdmeta {app switch} brief {Switch the application to use another domain/platform.}
     ::xsdb::setcmdmeta {app switch} description {
 SYNOPSIS {
     app switch -name <app-name> -platform <platform-name> -domain <domain-name>
@@ -1506,7 +1506,7 @@ RETURNS {
 }
 EXAMPLE {
     app switch -name helloworld -platform zcu102
-        Switch the helloworld application to use zcu102 platform.
+        Switch the Hello World application to use zcu102 platform.
 }
 }
 
@@ -1697,7 +1697,7 @@ EXAMPLE {
     }
     namespace export sysproj
     ::xsdb::setcmdmeta sysproj categories {projects}
-    ::xsdb::setcmdmeta sysproj brief {System project management}
+    ::xsdb::setcmdmeta sysproj brief {System project management.}
     ::xsdb::setcmdmeta sysproj description {
 SYNOPSIS {
     sysproj <sub-command> [options]
@@ -1725,7 +1725,7 @@ SUBCMDS {
 }
 }
 
-    ::xsdb::setcmdmeta {sysproj build} brief {Build system project}
+    ::xsdb::setcmdmeta {sysproj build} brief {Build system project.}
     ::xsdb::setcmdmeta {sysproj build} description {
 SYNOPSIS {
     sysproj build -name <sysproj-name>
@@ -1749,7 +1749,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {sysproj clean} brief {Clean application}
+    ::xsdb::setcmdmeta {sysproj clean} brief {Clean application.}
     ::xsdb::setcmdmeta {sysproj clean} description {
 SYNOPSIS {
     sysproj clean -name <app-name>
@@ -1771,7 +1771,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {sysproj list} brief {List system projects}
+    ::xsdb::setcmdmeta {sysproj list} brief {List system projects.}
     ::xsdb::setcmdmeta {sysproj list} description {
 SYNOPSIS {
     sysproj list
@@ -1790,7 +1790,7 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {sysproj remove} brief {Delete system project}
+    ::xsdb::setcmdmeta {sysproj remove} brief {Delete system project.}
     ::xsdb::setcmdmeta {sysproj remove} description {
 SYNOPSIS {
     sysproj remove [options]
@@ -1809,11 +1809,11 @@ EXAMPLE {
 }
 }
 
-    ::xsdb::setcmdmeta {sysproj report} brief {Report details of the system project}
+    ::xsdb::setcmdmeta {sysproj report} brief {Report details of the system project.}
     ::xsdb::setcmdmeta {sysproj report} description {
 SYNOPSIS {
     sysproj report <sysproj-name>
-        Return the details like platform, domain, etc.
+        Return the details such as the platform and domain
         of a system project.
 }
 OPTIONS {
@@ -2087,11 +2087,11 @@ EXAMPLE {
     }
     namespace export importprojects
     ::xsdb::setcmdmeta importprojects categories {projects} [subst $help_prefix]
-    ::xsdb::setcmdmeta importprojects brief {Import projects to workspace} [subst $help_prefix]
+    ::xsdb::setcmdmeta importprojects brief {Import projects to workspace.} [subst $help_prefix]
     ::xsdb::setcmdmeta importprojects description [subst {
 SYNOPSIS {
     [concat $help_prefix importprojects] <path>
-        Import all the vitis projects from <path> to workspace.
+        Import all the Vitis projects from <path> to workspace.
 }
 RETURNS {
     Nothing, if the projects are imported successfully.
@@ -2100,7 +2100,7 @@ RETURNS {
 }
 EXAMPLE {
     importprojects /tmp/wrk/wksp1/hello1
-        Import vitis project(s) into the current workspace.
+        Import Vitis project(s) into the current workspace.
 }
 }] [subst $help_prefix]
 
@@ -2610,7 +2610,7 @@ EXAMPLE {
     }
     namespace export toolchain
     ::xsdb::setcmdmeta toolchain categories {projects} [subst $help_prefix]
-    ::xsdb::setcmdmeta toolchain brief {Set or get toolchain used for building projects} [subst $help_prefix]
+    ::xsdb::setcmdmeta toolchain brief {Set or get toolchain used for building projects.} [subst $help_prefix]
     ::xsdb::setcmdmeta toolchain description [subst {
 SYNOPSIS {
     [concat $help_prefix toolchain]
@@ -2624,16 +2624,17 @@ SYNOPSIS {
         will use the new toolchain during build.
 }
 RETURNS {
-    Depends on the arguments specified
+    Depends on the arguments specified.
+
     <none>
-        List of available toolchains and supported processor types
+        List of available toolchains and supported processor types.
 
     <processor-type>
-        Current toolchain for processor-type
+        Current toolchain for processor-type.
 
     <processor-type> <tool-chain>
         Nothing if the tool-chain is set, or error, if unsupported tool-chain
-        is specified
+        is specified.
 }
 }] [subst $help_prefix]
 
@@ -2665,7 +2666,7 @@ RETURNS {
     }
     namespace export petalinux-install-path
     ::xsdb::setcmdmeta petalinux-install-path categories {petalinux} [subst $help_prefix]
-    ::xsdb::setcmdmeta petalinux-install-path brief {Set or get PetaLinux installation path} [subst $help_prefix]
+    ::xsdb::setcmdmeta petalinux-install-path brief {Set or get PetaLinux installation path.} [subst $help_prefix]
     ::xsdb::setcmdmeta petalinux-install-path description [subst {
 SYNOPSIS {
     [concat $help_prefix petalinux-install-path] <path>
