@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2022 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -1871,7 +1872,7 @@ namespace eval ::xsdb {
     }
 
     # Help categories.  The order in which help categories are
-    # declared is the order in which the are displayed to the user.
+    # declared is the order in which they are displayed to the user.
     setcmdmeta categories brief {List Help Categories}
     setcmdmeta commands brief {List all Commands}
     setcmdmeta connections brief {Target Connection Management}
@@ -3103,7 +3104,7 @@ RETURNS {
 	}
 	dict lappend arg actions {
 	    if { [lsearch $services JtagCable] >= 0 } {
-		# TODO: improve performance by changing JtagCable service to
+		# TODO: Improve performance by changing JtagCable service to
 		# allow caching and retrieval of all ports in a single command.
 		::tcf::send_command $chan JtagCable getOpenServers [list apply [list {argvar err} {
 		    upvar $argvar arg
@@ -4692,7 +4693,7 @@ EXAMPLE {
 	    set fmt "%16lX"
 	}
 	for {set i 0} {$i < $num} {incr i} {
-	    append outstr [format "$fmt:   [format "%0[expr $size * 2]X" [lindex $val_list $i]]\n" $start_addr]
+	    append outstr [format "$fmt:   [format "%0[expr $size * 2]lX" [lindex $val_list $i]]\n" $start_addr]
 	    incr start_addr $size
 	}
 
@@ -8110,7 +8111,7 @@ EXAMPLE {
 	}
 	set op [lindex $args 0]
 	set args [lindex $args 1]
-	# obtain the calling proc and use it with error
+	# Obtain the calling proc and use it with error
 	set r [catch {lindex [info level [expr [info level] - 1]] 0} pname]
 	if { [llength $args] == 0 } {
 	    error "wrong # args: should be \"$pname ?id-list? | -all\""
@@ -8826,8 +8827,10 @@ RETURNS {
 	set mb_proc_index 0
 	set a9_proc_index 0
 	set r5_proc_index 0
+	set r52_proc_index 0
 	set a53_proc_index 0
 	set a72_proc_index 0
+	set a78_proc_index 0
 
 	if { [dict exists $designtable $hw map] } {
 	    set design_map [dict get $designtable $hw map]
@@ -8952,6 +8955,14 @@ RETURNS {
 			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A72" bscan "" index $a72_proc_index]
 			incr a72_proc_index
 		    }
+		    "psv_cortexa78" {
+			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A78" bscan "" index $a78_proc_index]
+			incr a78_proc_index
+		    }
+		    "psv_cortexr52" {
+			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-R52" bscan "" index $r52_proc_index]
+			incr r52_proc_index
+		    }
 		}
 	    }
 	    dict set designtable $hw map $design_map
@@ -9018,15 +9029,15 @@ RETURNS {
 					      Flags [dict get $map_data flags]]
 			}
 		    }
+		    if { $mmap != "" } {
+			dict set memmap_ctxs $chan $ctx $mmap
+		    }
+		    if { $map != "" } {
+			dict lappend memmaptable $chan $ctx $map
+			update_memory_map $chan $ctx
+		    }
 		}
 	    }
-	}
-	if { $mmap != "" } {
-	    dict set memmap_ctxs $chan $ctx $mmap
-	}
-	if { $map != "" } {
-	    dict lappend memmaptable $chan $ctx $map
-	    update_memory_map $chan $ctx
 	}
     }
 
@@ -12001,10 +12012,10 @@ proc unknown { args } {
 	# still call xsdb::tcl::unknown in case this is an system command
 	set ret [catch {uplevel 1 [list xsdb::tcl::unknown {*}$args]} result]
 	if {$ret!=0} {
-	    # if this was a system command and if it failed, then prepend
-	    # the system error to the ambiguous error. checking for system
-	    # comamnd is too much, just check if error is different from
-	    # the standard ambiguous error (cr619468)
+	    # If this was a system command and if it failed, then prepend
+	    # the system error to the ambiguous error. If checking for system
+	    # comamnd is too much, then check if error is different from
+	    # the standard ambiguous error (cr619468.
 	    set system_error ""
 	    if {[string first "ambiguous" $result] == -1} {
 		set system_error "$result\n"

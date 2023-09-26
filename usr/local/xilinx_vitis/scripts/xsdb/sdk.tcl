@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -199,7 +200,7 @@ namespace eval ::sdk {
 		exec $xsdk_exec -eclipseargs $eclipseargs --launcher.suppressErrors -nosplash -application com.xilinx.sdx.cmdline.service \
 		 [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
 	    } else {
-	    exec $xsdk_exec -eclipseargs $eclipseargs --launcher.suppressErrors --launcher.GTK_version 2 -nosplash -application com.xilinx.sdx.cmdline.service \
+	    exec $xsdk_exec -classic -eclipseargs $eclipseargs --launcher.suppressErrors --launcher.GTK_version 2 -nosplash -application com.xilinx.sdx.cmdline.service \
 		 [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
 	    }
 
@@ -1267,7 +1268,7 @@ OPTIONS {
 
     -add
         Append the new <value> to configuration parameter value.
-        Add option is not supported for ,compiler-optimization
+        Add option is not supported for compiler-optimization
 
     -info
         Displays more information like possible values and possible
@@ -1277,7 +1278,7 @@ OPTIONS {
     -remove
         Remove <value> from the configuration parameter value.
         Remove option is not supported for assembler-flags, build-config,
-        compiler-misc, compiler-optimization, linker-misc and linker-script.
+        compiler-misc, compiler-optimization, linker-misc, and linker-script.
 }
 RETURNS {
     Depends on the arguments specified.

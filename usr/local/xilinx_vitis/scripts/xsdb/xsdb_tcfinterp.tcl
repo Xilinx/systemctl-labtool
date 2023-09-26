@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2022 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -1307,7 +1308,7 @@ proc ::get_stacktrace_children {chan ctx frames } {
     }
 
     if { [catch {::channels::[set chan]::datatypes::[set type]::get $ctx $frames} msg opt] } {
-	# TODO: Change to work for type returning error in different position.
+	# TODO: Change to work for type returning error in a different position.
 	if { $msg == $::cache_miss_err } {
 	    return -options $opt $msg
 	} elseif { [info procs ::channels::[set chan]::datatypes::[set type]::get] == "" } {

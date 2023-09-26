@@ -1,5 +1,6 @@
 /************************************************************************************************************
  * (c) Copyright 2012 - 2022 Xilinx, Inc. All rights reserved.
+ * (c) Copyright 2022 - 2023 Advanced Micro Devices, Inc. All rights reserved.
  * 
  * This file contains confidential and proprietary information of Xilinx, Inc. and is protected under U.S. 
  * and international copyright and other intellectual property laws.
@@ -594,9 +595,9 @@ int main(int argc, char **argv)
     }
 
     /*
-     * Process commands from stdin until there's an end-of-file. Note that we
+     * Process commands from stdin until there is an end-of-file. Note that we
      * need to fetch the standard channels again after every eval, since they
-     * may have been changed.
+     * might have been changed.
      */
 
     commandPtr = Tcl_NewObj();
@@ -651,7 +652,7 @@ int main(int argc, char **argv)
 		if (Tcl_InputBlocked(inChannel)) {
 		    /*
 		     * This can only happen if stdin has been set to
-		     * non-blocking.  In that case cycle back and try again.
+		     * non-blocking.  In that case, cycle back and try again.
 		     * This sets up a tight polling loop (since we have no
 		     * event loop running). If this causes bad CPU hogging,
 		     * we might try toggling the blocking on stdin instead.

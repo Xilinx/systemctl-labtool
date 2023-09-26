@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -399,7 +400,7 @@ OPTIONS {
         Use case insensitive filter matching.
 
     -filter <filter-expression>
-        Specify filter expression to control which targets are
+        Specify filter expression to control that targets are
         included in list based on its properties.  Filter expressions
         are similar to Tcl expr syntax.  Target properties are
         referenced by name, while Tcl variables are accessed using the
@@ -533,7 +534,7 @@ DESCRIPTION
             State to enter after shift is complete.  The default is RESET.
 
     sequence delay usec
-        Generate delay between sequence commands.  No JTAG clocks will
+        Generate the delay between sequence commands.  No JTAG clocks will
         be generated during the delay.  The delay is guaranteed to be
         at least <usec> microseconds, but can be longer for cables
         that do not support delays without generating JTAG clocks.
