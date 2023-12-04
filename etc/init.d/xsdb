@@ -2,7 +2,11 @@
 
 export LC_ALL='en_US.UTF-8'
 DB_UIO=`ls -lt /sys/class/uio | grep debug_bridge | awk '{print $9}'`
+echo "Starting xvc_server"
 /usr/local/bin/xvc_server -d $DB_UIO 1>/dev/NULL &
-/usr/local/bin/hw_server -e "set auto-open-servers xilinx-xvc:127.0.0.1:2542" 1>/dev/NULL &
-/usr/local/bin/cs_server &
+echo "Starting hw_server"
+/usr/local/bin/hw_server -e "set auto-open-servers xilinx-xvc:127.0.0.1:2542" 2>/dev/NULL -d
+echo "Starting cs_server"
+/usr/local/bin/cs_server -d
+
 systemd-notify --ready --status="xsdb service startup complete"
