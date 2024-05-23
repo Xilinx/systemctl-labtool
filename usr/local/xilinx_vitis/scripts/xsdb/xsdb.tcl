@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2022 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -512,11 +513,25 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
 						set mem_addr $paddr
 					    }
 					    # if one the elf section uses TCM, clear the entire TCM
-					    if { $clear_tcm && $mem_addr < $tcm_size } {
-						set clear_tcm 0
-						set tcm_cleared 1
-						lappend actions [list clear 0x0 $tcm_size]
-						incr total_bytes $tcm_size
+					    if { $clear_tcm } {
+						if { $split_mode } {
+						    if { ($mem_addr >= $tcm_start && $mem_addr < [expr $tcm_start + $tcm_size]) ||
+							($mem_addr >= $tcm_start_2 && $mem_addr < [expr $tcm_start_2 + $tcm_size]) } {
+							set clear_tcm 0
+							set tcm_cleared 1
+							lappend actions [list clear $tcm_start $tcm_size]
+							incr total_bytes $tcm_size
+							lappend actions [list clear $tcm_start_2 $tcm_size]
+							incr total_bytes $tcm_size
+						    }
+						} else {
+						    if { $mem_addr >= $tcm_start && $mem_addr < [expr $tcm_start + $tcm_size] } {
+							set clear_tcm 0
+							set tcm_cleared 1
+							lappend actions [list clear $tcm_start $tcm_size]
+							incr total_bytes $tcm_size
+						    }
+						}
 					    }
 					    if { $filesz > 0 } {
 						lappend actions [list copy $offset $mem_addr $filesz]
@@ -524,18 +539,82 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
 					    }
 					    if { $clear && $filesz < $memsz } {
 						set clearsz [expr $memsz - $filesz]
-						if { $tcm_cleared == 1 && $mem_addr + $filesz < $tcm_size } {
-						    if { $mem_addr + $filesz + $clearsz <= $tcm_size } {
-							# nop, since TCM is already cleared
-							continue
+						if { $tcm_cleared == 1 } {
+						    if { $split_mode } {
+							if { ($mem_addr + $filesz >= $tcm_start) && ($mem_addr + $filesz < [expr $tcm_start + $tcm_size]) } {
+							    if { $mem_addr + $memsz < [expr $tcm_start + $tcm_size] } {
+								continue
+							    } elseif { $mem_addr + $memsz < $tcm_start_2 } {
+								set clearsz [expr $mem_addr + $memsz - [expr $tcm_start + $tcm_size]]
+								set mem_addr [expr $tcm_start + $tcm_size]
+								lappend actions [list clear $mem_addr $clearsz]
+								incr total_bytes $clearsz
+							    } elseif { $mem_addr + $memsz < [expr $tcm_start_2 + $tcm_size] } {
+								set clearsz [expr $tcm_start_2 - [expr $tcm_start + $tcm_size]]
+								set mem_addr [expr $tcm_start + $tcm_size]
+								lappend actions [list clear $mem_addr $clearsz]
+								incr total_bytes $clearsz
+							    } else {
+								set clearsz_1 [expr $tcm_start_2 - [expr $tcm_start + $tcm_size]]
+								set mem_addr_1 [expr $tcm_start + $tcm_size]
+								lappend actions [list clear $mem_addr_1 $clearsz_1]
+								incr total_bytes $clearsz_1
+								set clearsz_2 [expr $mem_addr + $memsz - [expr $tcm_start_2 + $tcm_size]]
+								set mem_addr_2 [expr $tcm_start_2 + $tcm_size]
+								lappend actions [list clear $mem_addr_2 $clearsz_2]
+								incr total_bytes $clearsz_2
+							    }
+							} elseif { ($mem_addr + $filesz >= [expr $tcm_start + $tcm_size]) && ($mem_addr + $filesz < $tcm_start_2) } {
+							    if { ($mem_addr + $memsz < $tcm_start_2) } {
+								set mem_addr [expr $mem_addr + $filesz]
+								lappend actions [list clear $mem_addr $clearsz]
+								incr total_bytes $clearsz
+							    } elseif { ($mem_addr + $memsz < [expr $tcm_start_2 + $tcm_size]) } {
+								set clearsz [expr $clearsz - [expr [expr $mem_addr + $memsz] - $tcm_start_2]]
+								set mem_addr [expr $mem_addr + $filesz]
+								lappend actions [list clear $mem_addr $clearsz]
+								incr total_bytes $clearsz
+							    } else {
+								set clearsz_1 [expr $clearsz - [expr [expr $mem_addr + $memsz] - $tcm_start_2]]
+								set mem_addr_1 [expr $mem_addr + $filesz]
+								lappend actions [list clear $mem_addr_1 $clearsz_1]
+								incr total_bytes $clearsz_1
+								set clearsz_2 [expr $mem_addr + $memsz - [expr $tcm_start_2 + $tcm_size]]
+								set mem_addr_2 [expr $tcm_start_2 + $tcm_size]
+								lappend actions [list clear $mem_addr_2 $clearsz_2]
+								incr total_bytes $clearsz_2
+							    }
+							} elseif { ($mem_addr + $filesz >= $tcm_start_2) && ($mem_addr + $filesz < [expr $tcm_start_2 + $tcm_size]) } {
+							    if { $mem_addr + $memsz < [expr $tcm_start_2 + $tcm_size] } {
+								continue
+							    } else {
+								set clearsz [expr $mem_addr + $memsz - [expr $tcm_start_2 + $tcm_size]]
+								set mem_addr [expr $tcm_start_2 + $tcm_size]
+								lappend actions [list clear $mem_addr $clearsz]
+								incr total_bytes $clearsz
+							    }
+							} else {
+							    set mem_addr [expr $mem_addr + $filesz]
+							    lappend actions [list clear $mem_addr $clearsz]
+							    incr total_bytes $clearsz
+							}
 						    } else {
-							# clear the memory outsize TCM boundary
-							set clearsz [expr $mem_addr + $filesz + $clearsz - $tcm_size]
-							set mem_addr $tcm_size
+							if { $mem_addr + $filesz >= $tcm_start && $mem_addr + $filesz < [expr $tcm_start + $tcm_size] } {
+							    if { $mem_addr + $filesz + $clearsz <= [expr $tcm_start + $tcm_size] } {
+								continue
+							    } else {
+								set clearsz [expr $mem_addr + $filesz + $clearsz - [expr $tcm_start + $tcm_size]]
+								set mem_addr [expr $tcm_start + $tcm_size]
+								set filesz 0
+							    }
+							}
+							lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
+							incr total_bytes $clearsz
 						    }
+						} else {
+						    lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
+						    incr total_bytes $clearsz
 						}
-						lappend actions [list clear [expr $mem_addr + $filesz] $clearsz]
-						incr total_bytes $clearsz
 					    }
 					}
 				    }
@@ -1871,7 +1950,7 @@ namespace eval ::xsdb {
     }
 
     # Help categories.  The order in which help categories are
-    # declared is the order in which the are displayed to the user.
+    # declared is the order in which they are displayed to the user.
     setcmdmeta categories brief {List Help Categories}
     setcmdmeta commands brief {List all Commands}
     setcmdmeta connections brief {Target Connection Management}
@@ -2449,8 +2528,9 @@ namespace eval ::xsdb {
     }
 
     proc print_processes {processes} {
+	set result ""
 	if { ![dict exists $processes ""] } {
-	    return
+	    return $result
 	}
 
 	foreach ctx [dict get $processes "" children] {
@@ -2471,8 +2551,9 @@ namespace eval ::xsdb {
 	    } else {
 		set attached 0
 	    }
-	    puts [format "%3d %s" $pid $name]
+	    append result "[format "%3d %s" $pid $name]\n"
 	}
+	return $result
     }
 
     proc get_regs {chan ctx flags} {
@@ -3103,7 +3184,7 @@ RETURNS {
 	}
 	dict lappend arg actions {
 	    if { [lsearch $services JtagCable] >= 0 } {
-		# TODO: improve performance by changing JtagCable service to
+		# TODO: Improve performance by changing JtagCable service to
 		# allow caching and retrieval of all ports in a single command.
 		::tcf::send_command $chan JtagCable getOpenServers [list apply [list {argvar err} {
 		    upvar $argvar arg
@@ -3296,7 +3377,8 @@ OPTIONS {
     -timeout <sec>
         Poll until the targets specified by filter option are found
         on the scan chain, or until timeout. This option is valid only
-        with filter option.
+        with filter option. This option is useful in case of soft processors
+        on PL, as their initialization and detection takes some time.
         The timeout value is in seconds. Default timeout is three seconds.
 
 }
@@ -4692,7 +4774,7 @@ EXAMPLE {
 	    set fmt "%16lX"
 	}
 	for {set i 0} {$i < $num} {incr i} {
-	    append outstr [format "$fmt:   [format "%0[expr $size * 2]X" [lindex $val_list $i]]\n" $start_addr]
+	    append outstr [format "$fmt:   [format "%0[expr $size * 2]lX" [lindex $val_list $i]]\n" $start_addr]
 	    incr start_addr $size
 	}
 
@@ -5548,8 +5630,18 @@ EXAMPLE {
 		while { [dict_get_safe $rc ParentID] != "" } {
 		    set rc [lindex [::tcf::cache_eval $params(chan) [list get_context_cache_client $params(chan) [dict get $rc ParentID] RunControl:context]] 1]
 		    if { ![string compare -length [string length "Versal"] "Versal" [dict get $rc Name]] } {
+			set rpu_glbl_cntl 0xff9a0000
+			set params(split_mode) [expr [mrd -force -value $rpu_glbl_cntl] & 0x08]
+			if { $params(split_mode) } {
+			    set params(tcm_start) 0
+			    set params(tcm_size) 0x10000
+			    set params(tcm_start_2) 0x20000
+			} else {
+			    set params(tcm_start) 0
+			    set params(tcm_size) 0x40000
+			    set params(tcm_start_2) 0
+			}
 			set params(clear_tcm) 1
-			set params(tcm_size) 0x40000
 			set tcm_clear_warnings 0
 			puts "WARNING: R5 TCM will be cleared if any of the elf sections use TCM.\n\
 			      \r         Use -skip-tcm-clear to skip this.\n\
@@ -6503,8 +6595,17 @@ OPTIONS {
 
     -type <reset type>
         The following reset types are supported:
-        pmc-por, pmc-srst, ps-por, ps-srst, pl-por, and pl-srst.
-        This option is supported only for Versal devices.
+        core, cluster, cpu, dap, system, por, pmc-por, pmc-srst, ps-por,
+        ps-srst, pl-por, and pl-srst.
+        pmc-por, pmc-srst, ps-por, ps-srst, pl-por, and pl-srst are supported
+        for Versal devices. Each of these reset types assert and deassert
+        corresponding bits in RST_PS register of CRP module.
+            pmc-por     : RST_PS[PMC_POR]
+            pmc-srst    : RST_PS[PMC_SRST]
+            ps-por      : RST_PS[PS_POR]
+            ps-srst     : RST_PS[PS_SRST]
+            pl-por      : RST_PS[PL_POR]
+            pl-srst     : RST_PS[PL_SRST]
 }
 RETURNS {
     Nothing, if reset if successful.
@@ -6820,6 +6921,22 @@ RETURNS {
 	}
     }
 
+    proc slave_slr_map { slr addr len } {
+	set slr_cnt 3
+	if { ($slr < 0) || ($slr > $slr_cnt )} {
+	    error "invalid slr number: should be from 0 to $slr_cnt"
+	}
+	if { ($addr < 0xf0000000) || ($addr >= 0xf8000000) || ([expr ($addr + $len)] >= 0xf8000000) } {
+	    error "address out of range, valid range 0xf0000000-0xf7ffffff"
+	}
+	switch -- $slr {
+	    0 { return $addr }
+	    1 { return [format 0x%lx [expr ($addr + 0x108000000 - 0xf0000000)]] }
+	    2 { return [format 0x%lx [expr ($addr + 0x110000000 - 0xf0000000)]] }
+	    3 { return [format 0x%lx [expr ($addr + 0x118000000 - 0xf0000000)]] }
+	}
+    }
+
     proc plm {args} {
 	set options {
 	    {help "command help"}
@@ -6840,12 +6957,7 @@ RETURNS {
 	    set subcmd [lsearch -all -inline -glob $subcmds [lindex $args 0]]
 	}
 	set args [lrange $args 1 end]
-	set use_rtca 0
 	set log_cmd 0x040113
-	set rtca_addr 0xf2014000
-	if { [format 0x%x [mrd -force -value $rtca_addr]] == "0x41435452" } {
-	    set use_rtca 1
-	}
 
 	switch -- $subcmd {
 	    "set-log-level" {
@@ -6912,6 +7024,7 @@ RETURNS {
 		set options {
 		    {handle "file handle" {default stdout args 1}}
 		    {log-mem-addr "log address" {args 1}}
+		    {slr "slave slr number" {args 1}}
 		    {log-size "log size in bytes" {args 1}}
 		    {skip-rtca "skip using RTCA"}
 		    {help "command help" }
@@ -6927,55 +7040,70 @@ RETURNS {
 		set use_defaults 0
 		set wrapped_addr 0
 		set wrapped_len 0
-		if { ![info exists params1(log-mem-addr)] && ![info exists params1(log-size)] } {
-			if { $use_rtca && !$params1(skip-rtca) } {
-			    set addr [format 0x%lx [expr [mrd -force -value [expr $rtca_addr + 0x10]] | [expr [mrd -force -value [expr $rtca_addr + 0x14]] << 32]]]
-			    set size [format 0x%x [expr [mrd -force -value [expr $rtca_addr + 0x18]] / 4]]
-			    set offset [expr [format 0x%x [mrd -force -value [expr $rtca_addr + 0x1c]]] & 0x7fffffff]
-			    if { ($addr == 0xdeadbeef) || ([expr $addr >> 32] == 0xdeadbeef) || ($offset == 0xdeadbeef) } {
-			        set use_defaults 1
-			    }
-			    set len [expr ($offset & 0x7fffffff) - 1]
-			    set wrapped [expr $offset & 0x80000000]
-			    if { $wrapped != 0 } {
-			        set wrapped_addr $addr
-			        set wrapped_len [expr $len - 1]
-			        set addr [expr $addr + $len + 1]
-			        set len [expr $size - $len - 1]
-			    }
-			} else {
-			    set ret {}
-			    if { [catch {
-			    check_if_plm_log_supported
-			    set ret [pmc generic -response-size 6 $log_cmd 4 0 0 0]
-			    } msg] } {
-			    if { $msg == "previous ipi request is pending" || $msg == "timeout waiting for request to be acknowledged" } {
-			        set use_defaults 1
-			    } else {
-			        error $msg
-			    }
-			    } elseif { [lindex $ret 0] != 0 } {
-			        set use_defaults 1
-			    }
+		set use_rtca 0
+		set rtca_addr 0xf2014000
 
-			    if { $use_defaults == 0 } {
-			        set addr [format 0x%lx [expr ([lindex $ret 1] << 32) | [lindex $ret 2]]]
-			        set len [lindex $ret 3]
-			        if { $len == 0 } {
-			            set use_defaults 1
-			        }
+		set addr $def_addr
+		set len $def_size
+		if { [info exists params1(log-mem-addr)] } {
+		    set addr $params1(log-mem-addr)
+		}
+		if { [info exists params1(log-size)] } {
+		    set len $params1(log-size)
+		}
+		if { [info exists params1(slr)] } {
+		    set rtca_addr [ slave_slr_map $params1(slr) $rtca_addr $len ]
+		    set addr [slave_slr_map $params1(slr) $addr $len]
+		    set def_addr [slave_slr_map $params1(slr) $def_addr $len]
+		}
+		if { [format 0x%x [mrd -force -value $rtca_addr]] == "0x41435452" } {
+		    set use_rtca 1
+		}
+		if { ![info exists params1(log-mem-addr)] && ![info exists params1(log-size)] } {
+		    if { $use_rtca && !$params1(skip-rtca) } {
+			set addr [format 0x%lx [expr [mrd -force -value [expr $rtca_addr + 0x10]] | [expr [mrd -force -value [expr $rtca_addr + 0x14]] << 32]]]
+			if { [info exists params1(slr)] } {
+			    set addr [slave_slr_map $params1(slr) $addr $len]
+			}
+			set size [format 0x%x [expr [mrd -force -value [expr $rtca_addr + 0x18]] / 4]]
+			set offset [expr [format 0x%x [mrd -force -value [expr $rtca_addr + 0x1c]]] & 0x7fffffff]
+			if { ($addr == 0xdeadbeef) || ([expr $addr >> 32] == 0xdeadbeef) || ($offset == 0xdeadbeef) } {
+			    set use_defaults 1
+			}
+			set len [expr ($offset & 0x7fffffff) - 1]
+			set wrapped [expr $offset & 0x80000000]
+			if { $wrapped != 0 } {
+			    set wrapped_addr $addr
+			    set wrapped_len [expr $len - 1]
+			    set addr [expr $addr + $len + 1]
+			    set len [expr $size - $len - 1]
+			}
+		    } else {
+			set ret {}
+			if { [catch {
+			check_if_plm_log_supported
+			set ret [pmc generic -response-size 6 $log_cmd 4 0 0 0]
+			} msg] } {
+			    if { $msg == "previous ipi request is pending" || $msg == "timeout waiting for request to be acknowledged" } {
+				set use_defaults 1
+			    } else {
+				error $msg
 			    }
-		    }
-		} else {
-		    if { [info exists params1(log-mem-addr)] } {
-			set addr $params1(log-mem-addr)
-		    } else {
-			set addr $def_addr
-		    }
-		    if { [info exists params1(log-size)] } {
-			set len $params1(log-size)
-		    } else {
-			set len $def_size
+			} elseif { [lindex $ret 0] != 0 } {
+			    set use_defaults 1
+			}
+
+			if { $use_defaults == 0 } {
+			    set addr [format 0x%lx [expr ([lindex $ret 1] << 32) | [lindex $ret 2]]]
+			    set len [lindex $ret 3]
+			    if { $len == 0 } {
+				set use_defaults 1
+			    } else {
+				if { [info exists params1(slr)] } {
+				    set addr [slave_slr_map $params1(slr) $addr $len]
+				}
+			    }
+			}
 		    }
 		}
 		if { $use_defaults } {
@@ -7115,6 +7243,10 @@ OPTIONS {
         Specify the log buffer size. If this option is not specified, the
         default size of 1024 bytes is used, only when the log memory information
         cannot be retrieved from PLM.
+
+    -slr <num>
+        Specify the slave slr number. If this option is not specified, the
+        default is SLR0 (master plm). Valid slr range is from 0 to 3.
 }
 RETURNS {
     Nothing, if successful. Error, otherwise.
@@ -7123,6 +7255,8 @@ EXAMPLE {
     set fp [open test.log r]
     plm log -handle $fp
         Retrieve PLM debug log and write it to test.log.
+    plm log -slr 2
+        Retrieve PLM debug log from slave slr 2.
 }
 }
 
@@ -7140,7 +7274,7 @@ EXAMPLE {
 		    error "wrong # of args: should be \"process list\""
 		}
 		set procs [::tcf::cache_eval $chan [list get_processes $chan]]
-		::xsdb::print_processes $procs
+		return [::xsdb::print_processes $procs]
 	    }
 
 	    "attach" {
@@ -7849,6 +7983,7 @@ RETURNS {
 	    {type "breakpoint type" {default auto args 1}}
 	    {mode "access mode" {args 1}}
 	    {enable "enable breakpoint" {default 1 args 1}}
+	    {ignore-count "ignore breakpoint count" {args 1}}
 	    {ct-input "cross trigger input" {args 1}}
 	    {ct-output "cross trigger output" {args 1}}
 	    {properties "advanced properties" {default {} args 1}}
@@ -7856,6 +7991,8 @@ RETURNS {
 	    {target-id "use specified target-id" {args 1}}
 	    {skip-on-step "skip on step" {default 0 args 1}}
 	    {action "trigger action" {args 1}}
+	    {temp "trigger breakpoint once"}
+	    {skip-prologue "skip function prologue"}
 	    {help "command help"}
 	}
 	array set params [::xsdb::get_options args $options 0]
@@ -7891,9 +8028,20 @@ RETURNS {
 	}
 	set fmt [dict merge [dict create ID s Enabled b BreakpointType s ContextIds a{s} ContextNames a{s} Location s \
 			     AccessMode i Size i File s Line i Column i MaskValue i Mask i Condition s IgnoreCount i \
-			     StopGroup a{s} Temporary b CrossTriggerInp a{i} CrossTriggerOut a{i} SkipOnStep i] $params(meta-data)]
+			     StopGroup a{s} Temporary b CrossTriggerInp a{i} CrossTriggerOut a{i} SkipOnStep i \
+			     SkipPrologue b] $params(meta-data)]
 	set data [dict merge [dict create ID [::uuid::uuid generate] Enabled $params(enable)] $params(properties)]
 
+	if { $params(temp) } {
+	    dict set data Temporary 1
+	}
+	if { $params(skip-prologue) } {
+	    dict set data SkipPrologue 1
+	}
+	if { [info exists params(ignore-count)] } {
+	    checkint $params(ignore-count)
+	    dict set data IgnoreCount $params(ignore-count)
+	}
 	if { [info exists params(addr)] } {
 	    dict set data Location $params(addr)
 	}
@@ -8029,6 +8177,10 @@ OPTIONS {
         is 0 the breakpoint is disabled, otherwise the breakpoint is
         enabled.  The default is enabled.
 
+    -ignore-count <count>
+        Specify the number of times this breakpoint needs to be ignored before
+        it is triggered.
+
     -ct-input <list> -ct-output <list>
         Specify input and output cross triggers.  <list> is a list of
         numbers identifying the cross trigger pin.  For Zynq 0-7 it is
@@ -8055,6 +8207,13 @@ OPTIONS {
         If this option is not used, the breakpoint is set for the active
         target selected through targets command. If there is no active target,
         the breakpoint is set for all targets.
+
+    -temp
+        The breakpoint is removed after it is triggered once.
+
+    -skip-prologue
+        For function breakpoints, the function prologue is skipped while
+        planting the breakpoint.
 }
 RETURNS {
     Breakpoint id or an error if invalid target id is specified.
@@ -8110,7 +8269,7 @@ EXAMPLE {
 	}
 	set op [lindex $args 0]
 	set args [lindex $args 1]
-	# obtain the calling proc and use it with error
+	# Obtain the calling proc and use it with error
 	set r [catch {lindex [info level [expr [info level] - 1]] 0} pname]
 	if { [llength $args] == 0 } {
 	    error "wrong # args: should be \"$pname ?id-list? | -all\""
@@ -8552,11 +8711,11 @@ RETURNS {
 	    set xsdb_exec_path [file dirname [info nameofexecutable]]
 	    switch -glob $tcl_platform(os) {
 		"Windows*" {
-		    set id [exec cmd /c start $xsdb_exec_path/tclsh85t $uart_script $terminal_portno &]
+		    set id [exec cmd /c start $xsdb_exec_path/tclsh86t $uart_script $terminal_portno &]
 		}
 
 		"Linux" {
-		    set id [exec xterm -e $xsdb_exec_path/tclsh8.5 $uart_script $terminal_portno &]
+		    set id [exec xterm -e $xsdb_exec_path/tclsh8.6 $uart_script $terminal_portno &]
 		}
 
 		default {
@@ -8826,8 +8985,10 @@ RETURNS {
 	set mb_proc_index 0
 	set a9_proc_index 0
 	set r5_proc_index 0
+	set r52_proc_index 0
 	set a53_proc_index 0
 	set a72_proc_index 0
+	set a78_proc_index 0
 
 	if { [dict exists $designtable $hw map] } {
 	    set design_map [dict get $designtable $hw map]
@@ -8952,6 +9113,14 @@ RETURNS {
 			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A72" bscan "" index $a72_proc_index]
 			incr a72_proc_index
 		    }
+		    "psv_cortexa78" {
+			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-A78" bscan "" index $a78_proc_index]
+			incr a78_proc_index
+		    }
+		    "psv_cortexr52" {
+			dict set design_map [::common::get_property NAME $p] [dict create mmap $mmap type "ARM-Cortex-R52" bscan "" index $r52_proc_index]
+			incr r52_proc_index
+		    }
 		}
 	    }
 	    dict set designtable $hw map $design_map
@@ -9018,15 +9187,15 @@ RETURNS {
 					      Flags [dict get $map_data flags]]
 			}
 		    }
+		    if { $mmap != "" } {
+			dict set memmap_ctxs $chan $ctx $mmap
+		    }
+		    if { $map != "" } {
+			dict lappend memmaptable $chan $ctx $map
+			update_memory_map $chan $ctx
+		    }
 		}
 	    }
-	}
-	if { $mmap != "" } {
-	    dict set memmap_ctxs $chan $ctx $mmap
-	}
-	if { $map != "" } {
-	    dict lappend memmaptable $chan $ctx $map
-	    update_memory_map $chan $ctx
 	}
     }
 
@@ -11985,11 +12154,15 @@ rename unknown xsdb::tcl::unknown
 proc unknown { args } {
     # auto expand command (CR576119)
     set commands {}
+    set xsdb_commands {}
     set name [lindex $args 0]
     if { ![catch {set candidates [info commands $name*]}] } {
 	foreach candidate $candidates {
 	    if { [string first $name $candidate] == 0 } {
 		lappend commands $candidate
+	    }
+	    if { [info command ::xsdb::$candidate] != "" } {
+		lappend xsdb_commands $candidate
 	    }
 	}
     }
@@ -11999,17 +12172,21 @@ proc unknown { args } {
     } elseif {[tcl::llength $commands]} {
 	# more than one match
 	# still call xsdb::tcl::unknown in case this is an system command
-	set ret [catch {uplevel 1 [list xsdb::tcl::unknown {*}$args]} result]
-	if {$ret!=0} {
-	    # if this was a system command and if it failed, then prepend
-	    # the system error to the ambiguous error. checking for system
-	    # comamnd is too much, just check if error is different from
-	    # the standard ambiguous error (cr619468)
-	    set system_error ""
-	    if {[string first "ambiguous" $result] == -1} {
-		set system_error "$result\n"
+	if {[tcl::llength $xsdb_commands] == 1} {
+	    set ret [catch {uplevel 1 [lreplace $args 0 0 [lindex $xsdb_commands 0]]} result]
+	} else {
+	    set ret [catch {uplevel 1 [list xsdb::tcl::unknown {*}$args]} result]
+	    if {$ret!=0} {
+		# If this was a system command and if it failed, then prepend
+		# the system error to the ambiguous error. If checking for system
+		# comamnd is too much, then check if error is different from
+		# the standard ambiguous error (cr619468.
+		set system_error ""
+		if {[string first "ambiguous" $result] == -1} {
+		    set system_error "$result\n"
+		}
+		return -code error "${system_error}ambiguous command name \"$name\": [lsort $commands]"
 	    }
-	    return -code error "${system_error}ambiguous command name \"$name\": [lsort $commands]"
 	}
     } else {
 	# call xsdb::tcl::unknown

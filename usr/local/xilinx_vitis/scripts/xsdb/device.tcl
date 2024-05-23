@@ -1,5 +1,6 @@
 ##################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -531,9 +532,80 @@ OPTIONS {
 
     -hex
         Format the return data in hexadecimal.
+
+    -slr <slr-index>
+        Select the SLR from which to read the register (default SLR 0).
 }
 RETURNS {
     Status report.
+}
+}
+
+    proc reset {args} {
+        variable curtarget
+        variable get_device_action
+
+        set options {
+            {jtag-target "Jtag target to use instead of current target" {args 1}}
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options 0]
+
+        if { $params(help) } {
+            return [help device [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
+
+        set arg [array get params]
+        dict set arg chan [::xsdb::getcurchan]
+        dict set arg ctx $::xsdb::curtarget
+
+        set node ""
+        if {[info exists params(jtag-target)]} {
+            set targets [::xsdb::jtag::targets -target-properties]
+            foreach target $targets {
+                if {[dict get $target node_id] == $params(jtag-target)} {
+                    set node [dict get $target target_ctx]
+                    dict set arg node $node
+                    break
+                }
+            }
+            if {$node == ""} {
+                error "no JTAG target with id $params(jtag-target)"
+            }
+        }
+
+        if {$node == ""} {
+            # Find the 1st device, if the current context is not device and
+            # map target context to jtag context
+            dict lappend arg actions $get_device_action
+        }
+
+        # Secure debug the device
+        dict lappend arg actions {
+            send_action_command $argvar Xicom configReset s e [list $node] {}
+            incr numreq 1
+            incr curaction
+        }
+
+        dict set arg result {
+            #set status
+        }
+        return [::xsdb::process_tcf_actions $arg]
+    }
+    namespace export reset
+    ::xsdb::setcmdmeta {device reset} categories {device}
+    ::xsdb::setcmdmeta {device reset} brief {Reset device via JTAG SYS_RST}
+    ::xsdb::setcmdmeta {device reset} description {
+SYNOPSIS {
+    device reset [options]
+        Resets device via main TAP's JTAG SYS_RST command.
+}
+OPTIONS {
+    -jtag-target <jtag-target-id>
+        Specify jtag target id to use instead of the current target.  This is primarily used when there isn't a valid target option.
+}
+RETURNS {
+    Nothing, if reset is successful, or an error if failed.
 }
 }
 
