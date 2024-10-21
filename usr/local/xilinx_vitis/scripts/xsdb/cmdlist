@@ -1,0 +1,93 @@
+backtrace
+bt
+bpadd
+bpdisable
+bpenable
+bplist
+bpremove
+bpstatus
+con
+configparams
+connect
+dis
+disconnect
+dow
+fpga
+gdbremote connect
+gdbremote disconnect
+init_ps
+jtag claim
+jtag device_properties
+jtag disclaim
+jtag frequency
+jtag lock
+jtag sequence
+jtag servers
+jtag skew
+jtag targets
+jtag unlock
+jtagterminal
+loadhw
+locals
+mask_poll
+mask_write
+mb_drrd
+mb_drwr
+mbprofile
+mbtrace
+mdm_drrd
+mdm_drwr
+memmap
+mrd
+mwr
+nxt
+nxti
+osa
+print
+profile
+readjtaguart
+rrd
+rst
+rwr
+state
+stop
+stp
+stpi
+stpout
+svf con
+svf config
+svf delay
+svf dow
+svf generate
+svf mwr
+svf stop
+targets
+tfile close
+tfile copy
+tfile fsetstat
+tfile fstat
+tfile ls
+tfile lstat
+tfile mkdir
+tfile open
+tfile opendir
+tfile read
+tfile readdir
+tfile readlink
+tfile realpath
+tfile remove
+tfile rename
+tfile rmdir
+tfile roots
+tfile setstat
+tfile stat
+tfile symlink
+tfile user
+tfile write
+unloadhw
+verify
+version
+xsdbserver disconnect
+xsdbserver start
+xsdbserver stop
+xsdbserver version
