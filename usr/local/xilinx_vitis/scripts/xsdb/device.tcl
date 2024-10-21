@@ -144,6 +144,7 @@ namespace eval ::xsdb::device {
             {chunksize "chuck size" {default 0x4000 args 1}}
             {maxwait "max wait in ms for SBI"}
             {state "return done status"}
+            {jtag-target "Jtag target to use instead of current target" {args 1}}
             {help "command help"}
         }
         array set params [::xsdb::get_options args $options 0]
@@ -176,9 +177,26 @@ namespace eval ::xsdb::device {
         dict set arg cancelled 0
         dict set arg state ""
 
-        # Find the 1st device, if the current context is not device and
-        # map target context to jtag context
-        dict lappend arg actions $get_device_action
+        set node ""
+        if {[info exists params(jtag-target)]} {
+            set targets [::xsdb::jtag::targets -target-properties]
+            foreach target $targets {
+                if {[dict get $target node_id] == $params(jtag-target)} {
+                    set node [dict get $target target_ctx]
+                    dict set arg node $node
+                    break
+                }
+            }
+            if {$node == ""} {
+                error "no JTAG target with id $params(jtag-target)"
+            }
+        }
+
+        if {$node == ""} {
+            # Find the 1st device, if the current context is not device and
+            # map target context to jtag context
+            dict lappend arg actions $get_device_action
+        }
 
         # Open pdi file
         dict lappend arg actions {
@@ -340,6 +358,11 @@ namespace eval ::xsdb::device {
 SYNOPSIS {
     device program <file>
         Program PDI or BIT file into the device.
+}
+OPTIONS {
+    -jtag-target <jtag-target-id>
+        Specify jtag target id to use instead of the current target.  This is primarily 
+        used when there isn't a valid target option.
 }
 NOTE {
     If no target is selected or if the current target is not a configurable
