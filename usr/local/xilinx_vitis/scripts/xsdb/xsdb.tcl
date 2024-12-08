@@ -3757,9 +3757,6 @@ EXAMPLE {
 	set breakpoints ""
 	set ctxs ""
 	dict for {key info} $et {
-	    if { $silent_mode == 1 && [lindex $info 0] != "stapl" } {
-		continue
-	    }
 	    switch -- [lindex $info 0] {
 		"breakpoint" {
 		    dict set breakpoints $key [lindex $info 1]
@@ -3797,13 +3794,11 @@ EXAMPLE {
 		}
 	    }
 	}
-	if { $silent_mode == 1 } {
-	    # Suppress event notifications in non-interactive/silent mode
-	    return
-	}
 	dict for {chan state} $tcfchans {
-	    puts "Info: $chan $state"
-	    puts -nonewline $prompt
+	    if { $silent_mode == 0 } {
+		    puts "Info: $chan $state"
+		    puts -nonewline $prompt
+	    }
 	    if { $state == "closed" } {
 		dict for {hw hwdata} $designtable {
 		    set channels [dict get $hwdata channels]
@@ -3832,7 +3827,10 @@ EXAMPLE {
 	set targets [::xsdb::get_debug_targets $curchan]
 	set triggered_bps {}
 	dict for {ctx state} $ctxs {
-	    if { $state == "removed" || $state == "added" || $state == "changed" } {
+	    if { $state == "removed" || $state == "added" || $state == "changed"} {
+		if { $silent_mode == 1 } {
+			break
+		}
 		set ctx_data ""
 		if { [dict exists [lindex $ctx 0] ID] } {
 		    set ctx_data [lindex $ctx 0]
@@ -3904,9 +3902,9 @@ EXAMPLE {
 		    } else {
 			set reason ""
 		    }
-		    puts "Info: $name (target $tid) Stopped at [format 0x%lx [lindex $state 2]]$reason"
+		    set info "Info: $name (target $tid) Stopped at [format 0x%lx [lindex $state 2]]$reason"
 		    set res [get_source_line_info $curchan $ctx]
-		    if { $res != "" } { puts $res }
+		    if { $res != "" } { append info $res }
 		    set state_data [lindex $state 4]
 		    if { [dict exists $state_data "BPs"] } {
 			set bps [dict get $state_data "BPs"]
@@ -3923,9 +3921,12 @@ EXAMPLE {
 		    } else {
 			set reason ""
 		    }
-		    puts "Info: $name (target $tid) Running$reason"
+		    set info "Info: $name (target $tid) Running$reason"
 		}
-		puts -nonewline $prompt
+		if { $silent_mode == 0 } {
+		    puts $info
+		    puts -nonewline $prompt
+		}
 	    }
 	}
 
@@ -3949,7 +3950,7 @@ EXAMPLE {
 		continue
 	    }
 	    set bp_status [dict get $bpdata Instances]
-	    puts "Info: Breakpoint $bpid status:"
+	    set info "Info: Breakpoint $bpid status:\n"
 	    foreach sinfo $bp_status {
 		if { [dict exists $sinfo LocationContext] } {
 		    set tid ""
@@ -3972,10 +3973,13 @@ EXAMPLE {
 			    append status "Type: [dict get $sinfo BreakpointType]"
 			}
 		    }
-		    puts "   target $tid: [list $status]"
+		    append info "   target $tid: [list $status]\n"
 		}
 	    }
-	    puts -nonewline $prompt
+	    if { $silent_mode == 0 } {
+		puts $info
+		puts -nonewline $prompt
+	    }
 	}
 	if { [llength $triggered_bps] != 0 } {
 	    foreach bp $triggered_bps {
@@ -3987,7 +3991,9 @@ EXAMPLE {
 		    }
 		}
 	    }
-	    puts -nonewline $prompt
+	    if { $silent_mode == 0 } {
+		puts -nonewline $prompt
+	    }
 	}
 
 	flush stdout
