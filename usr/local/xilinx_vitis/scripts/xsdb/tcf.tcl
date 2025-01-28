@@ -21,7 +21,7 @@
 # THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #####################################################################################
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 namespace eval tcf {
     variable version 0.1
