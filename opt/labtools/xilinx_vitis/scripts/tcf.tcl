@@ -1,5 +1,6 @@
 #####################################################################################
-# Copyright (c) 2012 - 2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2012-2021 Xilinx, Inc.  All rights reserved.
+# Copyright (c) 2022-2023 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: MIT
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -20,7 +21,7 @@
 # THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #####################################################################################
 
-package require Tcl 8.5
+package require Tcl 8.6
 
 namespace eval tcf {
     variable version 0.1

@@ -8,7 +8,7 @@
 # This library provide functions to differentinate string/list/dict in multi-ranks.
 #
 
-if { [package vcompare [package provide Tcl] 8.5] < 0 } {
+if { [package vcompare [package provide Tcl] 8.6] < 0 } {
     package require dict
 }
 
@@ -23,7 +23,7 @@ namespace eval ::xsdb::huddle {
     variable types
 }
 
-if {$::tcl_version < 8.5} {
+if {$::tcl_version < 8.6} {
     proc ::xsdb::huddle::huddle {command args} {
         variable ::xsdb::huddle::methods
         if {[info exists ::xsdb::huddle::methods($command)]} {

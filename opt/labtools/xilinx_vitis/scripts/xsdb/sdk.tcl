@@ -185,24 +185,23 @@ namespace eval ::sdk {
 	    } msg] } {
 		error $msg
 	    }
-	    set xsdk_exec "vitis"
+
+	    set xsdk_exec "$::env(RDI_BINROOT)/loader -exec rdi_vitis"
 
 	    set eclipseargs [::xsdb::get_eclipseargs]
 	    set vmargs [::xsdb::get_vmargs]
 
 	    catch {string first "Windows" $::tcl_platform(os)} res
 	    if { $res == 0 } {
-		set xsdk_exec "vitis.bat"
+		set xsdk_exec "$::env(RDI_BINROOT)/loader.bat -exec rdi_vitis"
 	    }
 	    puts -nonewline "Starting $xsdk_exec. This could take few seconds..."
 	    flush stdout
-	    if {[string first "Linux" $::tcl_platform(os)] == -1} {
-		exec $xsdk_exec -classic -eclipseargs $eclipseargs --launcher.suppressErrors -nosplash -application com.xilinx.sdx.cmdline.service \
-		 [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
-	    } else {
-	    exec $xsdk_exec -classic -eclipseargs $eclipseargs --launcher.suppressErrors --launcher.GTK_version 2 -nosplash -application com.xilinx.sdx.cmdline.service \
-		 [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
-	    }
+            if {[string first "Linux" $::tcl_platform(os)] == -1} {
+                exec $::env(RDI_BINROOT)/loader.bat -exec rdi_vitis -eclipseargs $eclipseargs --launcher.suppressErrors -nosplash -application com.xilinx.sdx.cmdline.service [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
+            } else {
+                exec $::env(RDI_BINROOT)/loader -exec rdi_vitis -eclipseargs $eclipseargs --launcher.suppressErrors --launcher.GTK_version 2 -nosplash -application com.xilinx.sdx.cmdline.service [dict get $server_props Port] -data $sdk_workspace -vmargs $vmargs -Dorg.eclipse.cdt.core.console=org.eclipse.cdt.core.systemConsole &
+            }
 
 	    set command_id [after $::xsdb::sdk_launch_timeout {set ::sdk::sdk_conn_status "timeout"}]
 	    vwait ::sdk::sdk_conn_status

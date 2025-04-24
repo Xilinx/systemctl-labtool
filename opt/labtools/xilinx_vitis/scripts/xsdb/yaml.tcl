@@ -12,7 +12,7 @@
 #
 #
 
-if {$::tcl_version < 8.5} {
+if {$::tcl_version < 8.6} {
     package require dict
 }
 
@@ -325,7 +325,7 @@ proc ::xsdb::yaml::_parseBlockNode {{status ""} {indent -1}} {
                 _ungetc 2
                 
                 # [Spec]
-                # Since people perceive theg-hindicator as indentation, 
+                # Since people perceive theï¿½g-ï¿½hindicator as indentation, 
                 # nested block sequences may be indented by one less space 
                 # to compensate, except, of course, 
                 # if nested inside another block sequence.
@@ -341,7 +341,7 @@ proc ::xsdb::yaml::_parseBlockNode {{status ""} {indent -1}} {
                 _ungetc 2
                 
 #                 # [Spec]
-#                 # Since people perceive theg-hindicator as indentation, 
+#                 # Since people perceive theï¿½g-ï¿½hindicator as indentation, 
 #                 # nested block sequences may be indented by one less space 
 #                 # to compensate, except, of course, 
 #                 # if nested inside another block sequence.
@@ -787,7 +787,7 @@ proc ::xsdb::yaml::_parseTimestamp {scalar} {
 
     set canonical [subst -nobackslashes -nocommands {^($datestr)[Tt ]($timestr)\.\d+ ?($timezone)?$}]
     set dttm [subst -nobackslashes -nocommands {^($datestr)(?:[Tt ]($timestr))?$}]
-    if {$::tcl_version < 8.5} {
+    if {$::tcl_version < 8.6} {
         if {[regexp $canonical $scalar nop dt tm zone]} {
             # Canonical
             if {$zone eq ""} {

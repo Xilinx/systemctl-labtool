@@ -11757,6 +11757,7 @@ EXAMPLE {
 	    {start "enable/start profing"}
 	    {cumulate "cumulative data"}
 	    {stop "disable/stop profiling"}
+	    {axi-base-addr "axi base addr for RISC-V only" {args 1}}
 	    {out "output file" {default "gmon.out" args 1}}
 	}
 	variable mb_profile_config
@@ -11774,8 +11775,8 @@ EXAMPLE {
 	    if { $params(start) && $params(stop) } {
 		error "conflicting options, use only one of -start or -stop"
 	    }
-	    if { $params(count-instr) || $params(cumulate) || [info exists params(low)] || [info exists params(high)] || [info exists params(freq)] } {
-		error "conflicting options, use only one of -start or -stop or (-low, -high, freq, -count-instr and/or -cumulate)"
+	    if { $params(count-instr) || $params(cumulate) || [info exists params(low)] || [info exists params(high)] || [info exists params(freq)] || [info exists params(axi-base-addr)] } {
+		error "conflicting options, use only one of -start or -stop or (-low, -high, freq, -count-instr and/or -cumulate and/or -axi-base-addr(for RISC-V only))"
 	    }
 	    if { [dict_get_safe $mb_profile_config cfg_done] == 1 } {
 		if { $params(start) } {
@@ -11810,12 +11811,18 @@ EXAMPLE {
 	    if { [info exists params(freq)] != 1 } {
 		set params(freq) 100000000
 	    }
+
 	    dict set mb_profile_config low_addr $params(low)
 	    dict set mb_profile_config high_addr $params(high)
 	    dict set mb_profile_config freq $params(freq)
 	    dict set mb_profile_config cumulate $params(cumulate)
 	    dict set mb_profile_config cnt_instr $params(count-instr)
-
+	    dict set mb_profile_config axi_base_addr 0
+	    dict set mb_profile_config is_axi_base_addr_set 0
+	    if { [info exists params(axi-base-addr)] } {
+		dict set mb_profile_config axi_base_addr $params(axi-base-addr)
+		dict set mb_profile_config is_axi_base_addr_set 1
+	    }
 	    xsdb::mbprofiler::mbprof_set_config $mb_profile_config
 	    xsdb::mbprofiler::mbprof_init
 	    dict set mb_profile_config cfg_done 1
@@ -11866,6 +11873,10 @@ OPTIONS {
         Output profiling data to file. <filename> Name of the output file for
         writing the profiling data. If the file name is not specified, profiling
         data is written to gmon.out.
+
+    -axi-base-addr <base_addr>
+        This option is for RISC-V only and if Slave AXI Interface is selected
+        for profiling. The input is base address of the Processor.
 }
 RETURNS {
     Depends on options used.

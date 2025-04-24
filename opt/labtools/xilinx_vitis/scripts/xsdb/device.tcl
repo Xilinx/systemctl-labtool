@@ -96,11 +96,17 @@ namespace eval ::xsdb::device {
         }
         set node [dict get $rc DpcTargetID]
     } elseif { ![dict exists $targets $ctx JtagDevice:properties] ||
-         ![dict exists [dict get $targets $ctx JtagDevice:properties] reg.jconfig] } {
+         (
+         ![dict exists [dict get $targets $ctx JtagDevice:properties] reg.jconfig] &&
+         ![dict exists [dict get $targets $ctx JtagDevice:properties] reg.jprogram]
+         )} {
         set devices {}
         dict for {ctx2 ctx2data} $targets {
         if { [dict exists $ctx2data JtagDevice:properties] &&
-             [dict exists [dict get $ctx2data JtagDevice:properties] reg.jconfig] } {
+             (
+             [dict exists [dict get $ctx2data JtagDevice:properties] reg.jconfig] ||
+             [dict exists [dict get $ctx2data JtagDevice:properties] reg.jprogram]
+             )} {
             lappend devices $ctx2
         }
         }

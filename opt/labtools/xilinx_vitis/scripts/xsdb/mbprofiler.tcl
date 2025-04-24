@@ -42,40 +42,80 @@ namespace eval ::xsdb::mbprofiler {
 	variable profile_dict
 	dict set profile_dict dirty_data 1
 
-        # Determine MicroBlaze properties: bscan, which, mdmaddr, mdmconfig
+	# Determine MicroBlaze properties: bscan, which, mdmaddr, mdmconfig
 	set chan [xsdb::getcurchan]
 	set ctx [xsdb::getcurtarget]
+	set riscv 0
 	set props [xsdb::get_target_microblaze_props $chan $ctx]
-
-	dict set profile_dict bscan ""
-	if { [dict exists $props JtagChain] } {
-	    dict set profile_dict bscan "[string range [dict get $props JtagChain] 4 end]"
+	set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan $ctx RunControl:context]] 1]
+	set tgt_name [xsdb::dict_get_safe $rc Name]
+	if {[string match "Hart*" $tgt_name]} {
+		set riscv 1
 	}
+	dict set profile_dict riscv $riscv
 
-	if { [dict exists $props MBCore] && [dict get $props MBCore] >= 0 } {
-	    dict set profile_dict which [dict get $props MBCore]
+	if { $riscv == 1 } {
+	    dict set profile_dict mdmaddr ""
+	    if {[regexp {#(\d+)} $tgt_name match number]} {
+		set axi_base_addr [dict get $profile_dict axi_base_addr]
+		if { $axi_base_addr == 0 } {
+		    dict set profile_dict mdmaddr [expr $number * 0x8000]
+		} else {
+		    dict set profile_dict mdmaddr $axi_base_addr
+		}
+	    }
+	    # Configuration Register Read
+	    set config_extended_debug 1
+	    set config_profile_size [read_riscv_profile_size]; # 1=4096, 2=8192, ...
+		# The data size can be determined by reading the MISA CSR. The two most significant bits
+		# define the RISC-V XLEN, where 01 means 32-bit, and 10 means 64-bit.
+	    set riscv_xlen [expr ("0x[dict get [xsdb::rrd -nvlist csr misa] misa]" & 0xC0000000) >> 0x1E]
+	    if {$riscv_xlen == 1} {
+		set config_data_size_64 0
+		set config_addr_size    0
+	    } elseif { $riscv_xlen == 2 } {
+		set config_data_size_64 1
+		# For RV64, the address size can be determined by writing all ones
+		# to the MTVAL CSR, and read back the value. Only the valid bits will
+		# be read back as one.
+		rwr csr mtval 0xFFFFFFFF
+		set config_addr_size [rrd csr mtval]
+	    } else {
+		error "Invalid riscv_len in Misa CSR register"
+	    }
 	} else {
-	    error "Invalid target. Only supported for MicroBlaze targets"
+	    dict set profile_dict bscan ""
+	    if { [dict get $profile_dict is_axi_base_addr_set] == 1 } {
+		error "Invalid option. axi-base-addr is for RISC-V only."
+	    }
+	    if { [dict exists $props JtagChain] } {
+		dict set profile_dict bscan "[string range [dict get $props JtagChain] 4 end]"
+	    }
+
+	    if { [dict exists $props MBCore] && [dict get $props MBCore] >= 0 } {
+		dict set profile_dict which [dict get $props MBCore]
+	    } else {
+		error "Invalid target. Only supported for MicroBlaze/RISC-V core targets"
+	    }
+
+	    dict set profile_dict mdmaddr ""
+	    if { [dict exists $props MDMAddr] } {
+		dict set profile_dict mdmaddr [dict get $props MDMAddr]
+	    }
+
+	    dict set profile_dict mdmconfig [dict get $props MDMConfig]
+
+	    # Determine MDM property: dbg_ports
+	    set config_mdm [expr [dict get $profile_dict mdmconfig] & 0xffffffff]
+	    set config_mdm_mb_dbg_ports [expr (($config_mdm >> 8) & 0xff) > 1]
+	    dict set profile_dict dbg_ports $config_mdm_mb_dbg_ports
+
+	    # Configuration Register Read
+	    set config_extended_debug [mb_get_config 161]
+	    set config_profile_size [mb_get_config 272 274] ; # 1=4096, 2=8192, ...
+	    set config_addr_size    [mb_get_config 276 281]
+	    set config_data_size_64 [mb_get_config 282]
 	}
-
-	dict set profile_dict mdmaddr ""
-	if { [dict exists $props MDMAddr] } {
-	    dict set profile_dict mdmaddr [dict get $props MDMAddr]
-	}
-
-	dict set profile_dict mdmconfig [dict get $props MDMConfig]
-
-        # Determine MDM property: dbg_ports
-	set config_mdm [expr [dict get $profile_dict mdmconfig] & 0xffffffff]
-	set config_mdm_mb_dbg_ports [expr (($config_mdm >> 8) & 0xff) > 1]
-	dict set profile_dict dbg_ports $config_mdm_mb_dbg_ports
-
-	# Configuration Register Read
-	set config_extended_debug [mb_get_config 161]
-	set config_profile_size [mb_get_config 272 274] ; # 1=4096, 2=8192, ...
-	set config_addr_size    [mb_get_config 276 281]
-	set config_data_size_64 [mb_get_config 282]
-
 	if {$config_extended_debug == 0} {
 	    error "Profiling is not enabled in the design. Enable Extended Debug in MicroBlaze configuration"
 	} elseif {$config_profile_size == 0} {
@@ -108,6 +148,7 @@ namespace eval ::xsdb::mbprofiler {
 	if {![mbprof_checkinit]} { return }
 
 	if {![dict get $profile_dict clear_mem]} { return }
+	set riscv [dict get $profile_dict riscv]
 
 	# Must stop profiling in order to write data
 	mbprof_write c [expr ([dict get $profile_dict ctrl_reg] & 0x3f) | 0x40]
@@ -116,36 +157,42 @@ namespace eval ::xsdb::mbprofiler {
 	mbprof_write b 0
 	set mdmaddr [dict get $profile_dict mdmaddr]
 	set mem_words [dict get $profile_dict mem_words]
-	if {$mdmaddr == ""} {
-	    set bscan [dict get $profile_dict bscan]
-	    set dbg_ports [dict get $profile_dict dbg_ports]
-	    set which [dict get $profile_dict which]
-
-	    set command 0x77
-	    set len 32
-	    set res [::xsdb::to_bits 0x0 $len]
-
-	    set seqname [jtag sequence]
-	    $seqname irshift -state IRUPDATE -register bypass
-	    $seqname irshift -state IDLE -register user$bscan
-	    $seqname drshift -state DRUPDATE -int 4 1
-	    # Set MDM Which MB register to current target, if more than one MicroBlaze
-	    if {$dbg_ports > 1} {
-		set len [expr $dbg_ports > 8 ? $dbg_ports : 8]
-		$trace_read_seq drshift -state DRUPDATE -int 8 0x0d
-		$trace_read_seq drshift -state DRUPDATE -int $len [expr 1 << $which]
-	    }
-	    for {set i 0} {$i < $mem_words - 1} {incr i} {
-		$seqname drshift -state DRUPDATE -int 8 $command
-		$seqname drshift -state DRUPDATE -bits $len $res
-	    }
-	    $seqname drshift -state DRUPDATE -int 8 $command
-	    $seqname drshift -state IDLE -bits $len $res
-	    $seqname run -current-target
-	    $seqname delete
-	} else {
+	if { $riscv == 1 } {
 	    for {set i 0} {$i < $mem_words} {incr i} {
-		mwr [expr $mdmaddr + 0x5DC0] 0
+		mwr [expr $mdmaddr + 0x11C0] 0
+	    }
+	} else {
+	    if {$mdmaddr == ""} {
+		set bscan [dict get $profile_dict bscan]
+		set dbg_ports [dict get $profile_dict dbg_ports]
+		set which [dict get $profile_dict which]
+
+		set command 0x77
+		set len 32
+		set res [::xsdb::to_bits 0x0 $len]
+
+		set seqname [jtag sequence]
+		$seqname irshift -state IRUPDATE -register bypass
+		$seqname irshift -state IDLE -register user$bscan
+		$seqname drshift -state DRUPDATE -int 4 1
+		# Set MDM Which MB register to current target, if more than one MicroBlaze
+		if {$dbg_ports > 1} {
+		    set len [expr $dbg_ports > 8 ? $dbg_ports : 8]
+		    $trace_read_seq drshift -state DRUPDATE -int 8 0x0d
+		    $trace_read_seq drshift -state DRUPDATE -int $len [expr 1 << $which]
+		}
+		for {set i 0} {$i < $mem_words - 1} {incr i} {
+		    $seqname drshift -state DRUPDATE -int 8 $command
+		    $seqname drshift -state DRUPDATE -bits $len $res
+		}
+		$seqname drshift -state DRUPDATE -int 8 $command
+		$seqname drshift -state IDLE -bits $len $res
+		$seqname run -current-target
+		$seqname delete
+	    } else {
+		for {set i 0} {$i < $mem_words} {incr i} {
+		    mwr [expr $mdmaddr + 0x5DC0] 0
+		}
 	    }
 	}
 	dict set profile_dict clear_mem 0
@@ -464,7 +511,7 @@ namespace eval ::xsdb::mbprofiler {
 	set profiler_bin [dict get $profile_dict profiler_bin]
 	set cnt_instr [dict get $profile_dict cnt_instr]
 	set freq [dict get $profile_dict freq]
-
+	set riscv [dict get $profile_dict riscv]
 	set res ""
 
 	if {$source == 1} {
@@ -474,10 +521,14 @@ namespace eval ::xsdb::mbprofiler {
 	}
 
 	if {$elf_file != ""} {
-	    set pgm mb-objdump
+	    if { $riscv == 1 } {
+		set pgm riscv64-unknown-elf-objdump
+	    } else {
+		set pgm mb-objdump
+	    }
 	    set cmd [list exec $pgm $dump_opt $elf_file]
 	    if {[catch $cmd res] != 0} {
-		error "mb-objdump returned with error code"
+		error "$pgm returned with error code"
 	    }
 
 	    set dis_line [split $res "\n"]
@@ -579,42 +630,51 @@ namespace eval ::xsdb::mbprofiler {
 	    set prof_list_raw {}
 	    set mdmaddr [dict get $profile_dict mdmaddr]
 	    set mem_words [dict get $profile_dict mem_words]
-	    if {$mdmaddr == ""} {
-		set bscan [dict get $profile_dict bscan]
-		set dbg_ports [dict get $profile_dict dbg_ports]
-		set which [dict get $profile_dict which]
-
-		set command 0x76
-		set len 36
-
-		set seqname [jtag sequence]
-		$seqname irshift -state IRUPDATE -register bypass
-		$seqname irshift -state IDLE -register user$bscan
-		$seqname drshift -state DRUPDATE -int 4 1
-		# Set MDM Which MB register to current target, if more than one MicroBlaze
-		if {$dbg_ports > 1} {
-		set len [expr $dbg_ports > 8 ? $dbg_ports : 8]
-		    $trace_read_seq drshift -state DRUPDATE -int 8 0x0d
-		    $trace_read_seq drshift -state DRUPDATE -int $len [expr 1 << $which]
-		}
-		for {set i 0} {$i < $mem_words - 1} {incr i} {
-		    $seqname drshift -state DRUPDATE -int 8 $command
-		    $seqname drshift -state DRUPDATE -tdi 0 -capture $len
-		}
-		$seqname drshift -state DRUPDATE -int 8 $command
-		$seqname drshift -state IDLE -tdi 0 -capture $len
-		set res [$seqname run -current-target -bits]
-		$seqname delete
-
-		foreach r $res {
-		    set r [xsdb::to_hex $r $len]
-		    lappend prof_list_raw $r
+	    set riscv [dict get $profile_dict riscv]
+	    if { $riscv == 1 } {
+		for {set i 0} {$i < $mem_words} {incr i} {
+		    set datalow  [mrd -value [expr $mdmaddr + 0x1180]]
+		    set datahigh [mrd -value [expr $mdmaddr + 0x1184]]
+		    lappend prof_list_raw [format {0x%09x} [expr ($datahigh << 32) | $datalow]]
 		}
 	    } else {
-		for {set i 0} {$i < $mem_words} {incr i} {
-		    set datalow  [mrd -value [expr $mdmaddr + 0x5D80]]
-		    set datahigh [mrd -value [expr $mdmaddr + 0x5D84]]
-		    lappend prof_list_raw [format {0x%09x} [expr ($datahigh << 32) | $datalow]]
+		if {$mdmaddr == ""} {
+		    set bscan [dict get $profile_dict bscan]
+		    set dbg_ports [dict get $profile_dict dbg_ports]
+		    set which [dict get $profile_dict which]
+
+		    set command 0x76
+		    set len 36
+
+		    set seqname [jtag sequence]
+		    $seqname irshift -state IRUPDATE -register bypass
+		    $seqname irshift -state IDLE -register user$bscan
+		    $seqname drshift -state DRUPDATE -int 4 1
+		    # Set MDM Which MB register to current target, if more than one MicroBlaze
+		    if {$dbg_ports > 1} {
+			set len [expr $dbg_ports > 8 ? $dbg_ports : 8]
+			$trace_read_seq drshift -state DRUPDATE -int 8 0x0d
+			$trace_read_seq drshift -state DRUPDATE -int $len [expr 1 << $which]
+		    }
+		    for {set i 0} {$i < $mem_words - 1} {incr i} {
+			$seqname drshift -state DRUPDATE -int 8 $command
+			$seqname drshift -state DRUPDATE -tdi 0 -capture $len
+		    }
+		    $seqname drshift -state DRUPDATE -int 8 $command
+		    $seqname drshift -state IDLE -tdi 0 -capture $len
+		    set res [$seqname run -current-target -bits]
+		    $seqname delete
+
+		    foreach r $res {
+			set r [xsdb::to_hex $r $len]
+			lappend prof_list_raw $r
+		    }
+		} else {
+		    for {set i 0} {$i < $mem_words} {incr i} {
+			set datalow  [mrd -value [expr $mdmaddr + 0x5D80]]
+			set datahigh [mrd -value [expr $mdmaddr + 0x5D84]]
+			lappend prof_list_raw [format {0x%09x} [expr ($datahigh << 32) | $datalow]]
+		    }
 		}
 	    }
 
@@ -703,12 +763,17 @@ namespace eval ::xsdb::mbprofiler {
 	variable profile_dict
 
 	set mdmaddr [dict get $profile_dict mdmaddr]
-	if {$mdmaddr == ""} {
-	    set bscan [dict get $profile_dict bscan]
-	    set which [dict get $profile_dict which]
-	    mb_drwr -user $bscan -which $which 0x71 [format {0x%08x} $value] 8
+	set riscv [dict get $profile_dict riscv]
+	if { $riscv == 1 } {
+	    mwr [expr $mdmaddr + 0x1040] $value
 	} else {
-	    mwr [expr $mdmaddr + 0x5C40] $value
+	    if {$mdmaddr == ""} {
+		set bscan [dict get $profile_dict bscan]
+		set which [dict get $profile_dict which]
+		mb_drwr -user $bscan -which $which 0x71 [format {0x%08x} $value] 8
+	    } else {
+		mwr [expr $mdmaddr + 0x5C40] $value
+	    }
 	}
     }
 
@@ -722,15 +787,23 @@ namespace eval ::xsdb::mbprofiler {
 	variable profile_dict
 
 	set mdmaddr [dict get $profile_dict mdmaddr]
-	if {$mdmaddr == ""} {
-	    set bscan [dict get $profile_dict bscan]
-	    set which [dict get $profile_dict which]
-	    set nibbles [expr ($len + 3) / 4]
-	    mb_drwr -user $bscan -which $which 0x72 [format "0x%0${nibbles}x" $value] $len
-	} else {
-	    mwr [expr $mdmaddr + 0x5C80] [expr $value & 0x7FFFFFFF]
+	set riscv [dict get $profile_dict riscv]
+	if { $riscv == 1 } {
+	    mwr [expr $mdmaddr + 0x1080] [expr $value & 0x7FFFFFFF]
 	    if {$len > 30} {
-		mwr [expr $mdmaddr + 0x5C84] [expr $value >> 30]
+		mwr [expr $mdmaddr + 0x1084] [expr $value >> 30]
+	    }
+	} else {
+	    if {$mdmaddr == ""} {
+		set bscan [dict get $profile_dict bscan]
+		set which [dict get $profile_dict which]
+		set nibbles [expr ($len + 3) / 4]
+		mb_drwr -user $bscan -which $which 0x72 [format "0x%0${nibbles}x" $value] $len
+	    } else {
+		mwr [expr $mdmaddr + 0x5C80] [expr $value & 0x7FFFFFFF]
+		if {$len > 30} {
+		    mwr [expr $mdmaddr + 0x5C84] [expr $value >> 30]
+		}
 	    }
 	}
     }
@@ -745,15 +818,23 @@ namespace eval ::xsdb::mbprofiler {
 	variable profile_dict
 
 	set mdmaddr [dict get $profile_dict mdmaddr]
-	if {$mdmaddr == ""} {
-	    set bscan [dict get $profile_dict bscan]
-	    set which [dict get $profile_dict which]
-	    set nibbles [expr ($len + 3) / 4]
-	    mb_drwr -user $bscan -which $which 0x73 [format "0x%0${nibbles}x" $value] $len
-	} else {
-	    mwr [expr $mdmaddr + 0x5CC0] [expr $value & 0x7FFFFFFF]
+	set riscv [dict get $profile_dict riscv]
+	if { $riscv == 1 } {
+	    mwr [expr $mdmaddr + 0x10C0] [expr $value & 0x7FFFFFFF]
 	    if {$len > 30} {
-		mwr [expr $mdmaddr + 0x5CC4] [expr $value >> 30]
+		mwr [expr $mdmaddr + 0x10C4] [expr $value >> 30]
+	    }
+	} else {
+	    if {$mdmaddr == ""} {
+		set bscan [dict get $profile_dict bscan]
+		set which [dict get $profile_dict which]
+		set nibbles [expr ($len + 3) / 4]
+		mb_drwr -user $bscan -which $which 0x73 [format "0x%0${nibbles}x" $value] $len
+	    } else {
+		mwr [expr $mdmaddr + 0x5CC0] [expr $value & 0x7FFFFFFF]
+		if {$len > 30} {
+		    mwr [expr $mdmaddr + 0x5CC4] [expr $value >> 30]
+		}
 	    }
 	}
     }
@@ -768,13 +849,44 @@ namespace eval ::xsdb::mbprofiler {
 	variable profile_dict
 
 	set mdmaddr [dict get $profile_dict mdmaddr]
-	if {$mdmaddr == ""} {
-	    set bscan [dict get $profile_dict bscan]
-	    set which [dict get $profile_dict which]
-	    mb_drwr -user $bscan -which $which 0x74 [format {0x%08x} $value] $len
+	set riscv [dict get $profile_dict riscv]
+	if { $riscv == 1 } {
+	    mwr [expr $mdmaddr + 0x1100] $value
 	} else {
-	    mwr [expr $mdmaddr + 0x5D00] $value
+	    if {$mdmaddr == ""} {
+		set bscan [dict get $profile_dict bscan]
+		set which [dict get $profile_dict which]
+		mb_drwr -user $bscan -which $which 0x74 [format {0x%08x} $value] $len
+	    } else {
+		mwr [expr $mdmaddr + 0x5D00] $value
+	    }
 	}
+    }
+
+    #---------------------------------------------------------------------------------------#
+    # read_riscv_profile_size
+    # This routine is used get profile size configured for RISC-V
+	# 1. Select RISC-V target. Write 0xFFFFFFFF to the Profiling Buffer Address Register(0x1100)
+	# 2. Write a magic value (for example 0xDEADBEEF) to the Profiling Data Write Register(0x11C0)
+	# 3. Write 0x3FF to the Profiling Buffer Address Register(0x1100)
+	# 4. Read the Profiling Data Read Register and check if it returns the magic value. If so,
+	#    the buffer size is 4KB. (0x1180)
+	# 5. Repeat steps 3-4 with 0x7FF (8KB), 0xFFF (16KB), … 0x7FFF (128KB).
+    #---------------------------------------------------------------------------------------#
+    proc read_riscv_profile_size { } {
+	set chan [xsdb::getcurchan]
+	set rc [lindex [::tcf::cache_eval $chan [list get_context_cache_client $chan [xsdb::getcurtarget] RunControl:context]] 1]
+	targets -set -filter {target_ctx =~ [dict get $rc ParentID]}
+	set size 0
+	set magic 0xDEADBEEF
+	mwr 0x1100 0xFFFFFFFF
+	mwr 0x11C0 $magic
+	foreach n {10 11 12 13 14 15} val {1 2 3 4 5 6} {
+	    mwr 0x1100 [expr (1 << $n) - 1]
+	    if { [mrd -value 0x1180] == $magic } { set size $val ; break }
+	}
+	targets -set -filter {target_ctx =~ [dict get $rc ID]}
+	return $val
     }
 }
 

@@ -40,8 +40,8 @@
 #define PATH_MAX 4096
 #endif
 
-#ifndef RDI_VERSION
-#define RDI_VERSION "0000.0"
+#ifndef HWSERVER_VERSION
+#define HWSERVER_VERSION "0000.0"
 #endif
 
 static const char programName[] = "System Debugger (XSDB)";
@@ -125,7 +125,7 @@ static const char* date_stamp = __DATE__;
 static void display_banner()
 {
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"\n");
-    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"****** %s v%s\n", programName, RDI_VERSION);
+    ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"****** %s v%s\n", programName, HWSERVER_VERSION);
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"  **** Build date : %s-%s\n", date_stamp, time_stamp);
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.\n");
     ComMsgMgr_SendMsg(ComMsgMgr_MSGTYPE_STATUS,"    ** Copyright 2022-%s Advanced Micro Devices, Inc. All Rights Reserved.\n\n", date_stamp + 7);
@@ -179,7 +179,7 @@ static void Tcl_XSDB_Init(Tcl_Interp *interp)
 	char tcllibpath[PATH_MAX];
 	strncpy(tcllibpath, xilenv, sizeof tcllibpath);
 	tcllibpath[sizeof tcllibpath - 1] = '\0';
-	strncat(tcllibpath, "/tps/tcl/tcl8.5", sizeof tcllibpath - 1);
+	strncat(tcllibpath, "/tps/tcl/tcl8.6", sizeof tcllibpath - 1);
 	Tcl_SetVar(interp, "auto_path", tcllibpath, TCL_GLOBAL_ONLY | TCL_LIST_ELEMENT | TCL_APPEND_VALUE);
 
 	/* If MYVIVADO is defined, use it to find XSDB package. Otherwise, fallback to XILINX_SDK/RDI_BASEROOT */
@@ -311,7 +311,7 @@ static int xsdb_version(
     }
 
     Tcl_ResetResult(interp);
-    Tcl_SetResult(interp, RDI_VERSION, TCL_STATIC);
+    Tcl_SetResult(interp, HWSERVER_VERSION, TCL_STATIC);
     return TCL_OK;
 }
 
