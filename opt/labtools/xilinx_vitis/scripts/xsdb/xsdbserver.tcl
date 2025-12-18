@@ -26,96 +26,96 @@ namespace eval ::xsdb::server {
     variable map {\0 \\000 \n \\n \r \\r \\ \\\\}
 
     proc quote {s} {
-	variable map
-	return [string map $map $s]
+        variable map
+        return [string map $map $s]
     }
 
     proc connect_handler {newchannel clientaddr clientport} {
-	variable channel
+        variable channel
 
-	puts "new connection $newchannel $clientaddr:$clientport"
-	if { [info exists channel] } {
-	    close $newchannel
-	    return
-	}
-	if { [catch {
-	    fconfigure $newchannel -block 0
-	    fileevent $newchannel readable ::xsdb::server::command_handler
-	    set channel $newchannel
-	} msg] } {
-	    puts "server connect error: $msg"
-	    close $newchannel
-	}
+        puts "new connection $newchannel $clientaddr:$clientport"
+        if { [info exists channel] } {
+            close $newchannel
+            return
+        }
+        if { [catch {
+            fconfigure $newchannel -block 0
+            fileevent $newchannel readable ::xsdb::server::command_handler
+            set channel $newchannel
+        } msg] } {
+            puts "server connect error: $msg"
+            close $newchannel
+        }
     }
 
     proc command_handler {} {
-	variable channel
+        variable channel
 
-	set count [gets $channel line]
-	if { $count < 0 } {
-	    if { [eof $channel] } {
-		close $channel
-		unset channel
-	    }
-	    return
-	}
+        set count [gets $channel line]
+        if { $count < 0 } {
+            if { [eof $channel] } {
+                close $channel
+                unset channel
+            }
+            return
+        }
 
-	fconfigure $channel -block 1
-	fileevent $channel readable {}
+        fconfigure $channel -block 1
+        fileevent $channel readable {}
 
-	set code [uplevel 1 [list catch $line _xsdbserver_result _xsdbserver_options]]
-	upvar _xsdbserver_result result
-	upvar _xsdbserver_options options
+        set code [uplevel 1 [list catch $line _xsdbserver_result _xsdbserver_options]]
+        upvar _xsdbserver_result result
+        upvar _xsdbserver_options options
 
-	if { ![info exists channel] } return
+        if { ![info exists channel] } return
 
-	if { $code == 0 || $code == 2 } {
-	    puts $channel "okay [quote $result]"
-	} else {
-	    if { $code == 3 } {
-		set result {invoked "break" outside of a loop}
-	    } elseif { $code == 4 } {
-		set result {invoked "continue" outside of a loop}
-	    }
-	    puts $channel "error [quote $result]"
-	}
-	flush $channel
+        if { $code == 0 || $code == 2 } {
+            puts $channel "okay [quote $result]"
+        } else {
+            if { $code == 3 } {
+                set result {invoked "break" outside of a loop}
+            } elseif { $code == 4 } {
+                set result {invoked "continue" outside of a loop}
+            }
+            puts $channel "error [quote $result]"
+        }
+        flush $channel
 
-	fconfigure $channel -block 0
-	fileevent $channel readable ::xsdb::server::command_handler
+        fconfigure $channel -block 0
+        fileevent $channel readable ::xsdb::server::command_handler
     }
 
     proc start {args} {
-	variable server
+        variable server
 
-	set options {
-	    {host "host name or ip address" {args 1}}
-	    {port "port number" {default 0 args 1}}
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
+        set options {
+            {host "host name or ip address" {args 1}}
+            {port "port number" {default 0 args 1}}
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
-	}
+        if { $params(help) } {
+            return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
 
-	if { [info exists server] } {
-	    error "XSDB server already started"
-	}
+        if { [info exists server] } {
+            error "XSDB server already started"
+        }
 
-	set opts {}
-	if { [info exists params(host)] } {
-	    lappend opts -myaddr $params(host)
-	}
-	set server [socket -server ::xsdb::server::connect_handler {*}$opts $params(port)]
+        set opts {}
+        if { [info exists params(host)] } {
+            lappend opts -myaddr $params(host)
+        }
+        set server [socket -server ::xsdb::server::connect_handler {*}$opts $params(port)]
 
-	puts "Connect to this XSDB server use host [info hostname] and port [lindex [fconfigure $server -sockname] 2]"
+        puts "Connect to this XSDB server use host [info hostname] and port [lindex [fconfigure $server -sockname] 2]"
 
-	# wait only in non-interactive mode
-	# vwait requires global variable
-	if { $::tcl_interactive == 0 } {
-	    vwait [namespace current]::server
-	}
+        # wait only in non-interactive mode
+        # vwait requires global variable
+        if { $::tcl_interactive == 0 } {
+            vwait [namespace current]::server
+        }
     }
     namespace export start
     ::xsdb::setcmdmeta {xsdbserver start} categories {miscellaneous}
@@ -155,29 +155,29 @@ EXAMPLE {
 }
 
     proc stop {args} {
-	variable server
-	variable channel
+        variable server
+        variable channel
 
-	set options {
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
+        set options {
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
-	}
+        if { $params(help) } {
+            return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
 
-	if { ![info exists server] } {
-	    error "XSDB server not started"
-	}
+        if { ![info exists server] } {
+            error "XSDB server not started"
+        }
 
-	if { [info exists channel] } {
-	    close $channel
-	    unset channel
-	}
+        if { [info exists channel] } {
+            close $channel
+            unset channel
+        }
 
-	close $server
-	unset server
+        close $server
+        unset server
     }
     namespace export stop
     ::xsdb::setcmdmeta {xsdbserver stop} categories {miscellaneous}
@@ -195,23 +195,23 @@ RETURNS {
 }
 
     proc disconnect {args} {
-	variable channel
+        variable channel
 
-	set options {
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
+        set options {
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
-	}
+        if { $params(help) } {
+            return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
 
-	if { ![info exists channel] } {
-	    error "XSDB server not connected"
-	}
+        if { ![info exists channel] } {
+            error "XSDB server not connected"
+        }
 
-	close $channel
-	unset channel
+        close $channel
+        unset channel
     }
     namespace export disconnect
     ::xsdb::setcmdmeta {xsdbserver disconnect} categories {miscellaneous}
@@ -228,21 +228,21 @@ RETURNS {
 }
 
     proc version {args} {
-	variable channel
-	set options {
-	    {help "command help"}
-	}
-	array set params [::xsdb::get_options args $options]
+        variable channel
+        set options {
+            {help "command help"}
+        }
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
-	}
+        if { $params(help) } {
+            return [help xsdbserver [lindex [split [lindex [info level 0] 0] ::] end]]
+        }
 
-	if { ![info exists channel] } {
-	    error "XSDB server not connected"
-	}
+        if { ![info exists channel] } {
+            error "XSDB server not connected"
+        }
 
-	return "XSDB Server Protocol Version 0.1"
+        return "XSDB Server Protocol Version 0.1"
     }
     namespace export version
     ::xsdb::setcmdmeta {xsdbserver version} categories {miscellaneous}

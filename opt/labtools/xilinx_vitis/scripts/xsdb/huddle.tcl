@@ -18,7 +18,7 @@ namespace eval ::xsdb::huddle {
     #   get gets strip jsondump set remove
     # type specified subcommands:
     #   create list llength keys
-    
+
     variable methods
     variable types
 }
@@ -52,7 +52,7 @@ if {$::tcl_version < 8.6} {
 proc ::xsdb::huddle::addType {procedure} {
     variable methods
     variable types
-    
+
     set setting [$procedure setting]
     dict with setting {
         foreach {m} $method {
@@ -125,7 +125,7 @@ proc ::xsdb::huddle::combine {args} {
     }
     set src [$types(callback:$tag) append "" {} $result]
     return [wrap $tag $src]
-    
+
 }
 
 proc ::xsdb::huddle::checkHuddle {src} {
@@ -237,7 +237,7 @@ proc ::xsdb::huddle::_key_reflexive {command node len path {option ""}} {
         incr len -1
         if {![info exists types(type:$tag)]} {error "\{$src\} don't have any child node."}
         set subs [$types(callback:$tag) get_sub $src $key]
-        return [_key_reflexive $command $subs $len $subpath $option] 
+        return [_key_reflexive $command $subs $len $subpath $option]
     }
     if {![info exists types(type:$tag)]} {error "\{$src\} is not a huddle node."}
     return [$command $node $path $option]
@@ -288,7 +288,7 @@ proc ::xsdb::huddle::_dict_setting {command args} {
             return [dict get $src $key]
         }
         strip { ; # strip from the tagged-content
-	    set result {}
+            set result {}
             foreach {src nop} $args break
             foreach {key val} $src {
                 lappend result $key [huddle strip $val]
@@ -447,7 +447,7 @@ proc ::xsdb::huddle::jsondump {data {offset "  "} {newline "\n"} {begin ""}} {
     set nlof "$newline$nextoff"
     set sp " "
     if {[string equal $offset ""]} {set sp ""}
-    
+
     set type [huddle type $data]
     switch -- $type {
         "string" {
@@ -562,6 +562,3 @@ namespace eval ::xsdb::huddle {
     set methods(get)    ::xsdb::huddle::proc_add_ub
     set methods(gets)   ::xsdb::huddle::proc_add_ub
 }
-
-
-

@@ -28,7 +28,6 @@ package require xsdb::tcfinterp
 namespace eval ::xsdb::device {
     variable version 0.1
     variable device_status_defs {}
-    variable add_plm_log_msg 1
 
     ::xsdb::setcmdmeta device brief {Device Configuration System}
 
@@ -141,13 +140,12 @@ namespace eval ::xsdb::device {
     proc program {args} {
         variable curtarget
         variable get_device_action
-        variable add_plm_log_msg
 
         set options {
             {file "program file" {args 1}}
             {partial "partial config"}
             {maxreq "max number pending requests" {default 16 args 1}}
-            {chunksize "chuck size" {default 0x4000 args 1}}
+            {chunksize "chunk size" {default 0x4000 args 1}}
             {maxwait "max wait in ms for SBI"}
             {state "return done status"}
             {jtag-target "Jtag target to use instead of current target" {args 1}}
@@ -340,13 +338,6 @@ namespace eval ::xsdb::device {
                 unset device_program_stage
                 return $ret
             }]
-            if { $add_plm_log_msg && $config_stage != "" } {
-                set add_plm_log_msg 0
-                append msg "\nRun \"plm log\" command to see PDI boot messages."
-                append msg "\n\nThis extra message about \"plm log\" command will not be"
-                append msg "\ndisplayed for subsequent \"device program\" errors during"
-                append msg "\nthis session.\n"
-            }
             error "$msg"
         }
         ::tcf::sync_eval {
@@ -367,7 +358,7 @@ SYNOPSIS {
 }
 OPTIONS {
     -jtag-target <jtag-target-id>
-        Specify jtag target id to use instead of the current target.  This is primarily 
+        Specify jtag target id to use instead of the current target.  This is primarily
         used when there isn't a valid target option.
 }
 NOTE {
@@ -556,7 +547,7 @@ OPTIONS {
         this option.
 
     -jtag-target <jtag-target-id>
-        Specify jtag target id to use instead of the current target.  This is primarily 
+        Specify jtag target id to use instead of the current target.  This is primarily
         used when there isn't a valid target option.
 
     -hex
@@ -748,7 +739,7 @@ SYNOPSIS {
 }
 OPTIONS {
     -jtag-target <jtag-target-id>
-        Specify jtag target id to use instead of the current target.  This is primarily 
+        Specify jtag target id to use instead of the current target.  This is primarily
         used when there isn't a valid target option.
 }
 NOTE {

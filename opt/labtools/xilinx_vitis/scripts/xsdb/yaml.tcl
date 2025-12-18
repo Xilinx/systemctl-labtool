@@ -34,7 +34,7 @@ namespace eval ::xsdb::yaml {
     #   return ""
     # }
     variable parsers
-    
+
     # scalar/collection treatment for matched specific yaml-tag
     # proc some_composer {type value} {
     #   return [list 1 $result-type $treatmented-value]
@@ -43,7 +43,7 @@ namespace eval ::xsdb::yaml {
     # }
     variable composer
 
-    variable defaults 
+    variable defaults
     array set defaults {
         isfile   0
         validate 0
@@ -66,7 +66,7 @@ namespace eval ::xsdb::yaml {
             false:Group {false off - no n}
         }
     }
-    
+
     variable _dumpIndent   2
     variable _dumpWordWrap 40
 
@@ -104,7 +104,7 @@ namespace eval ::xsdb::yaml {
 
 proc ::xsdb::yaml::yaml2dict {args} {
     _getOption $args
-    
+
     set result [_parseBlockNode]
     if {$::xsdb::yaml::data(validate)} {
         set result [string map "{\n} {\\n}" $result]
@@ -114,7 +114,7 @@ proc ::xsdb::yaml::yaml2dict {args} {
 
 proc ::xsdb::yaml::yaml2huddle {args} {
     _getOption $args
-    
+
     set result [_parseBlockNode]
     if {$::xsdb::yaml::data(validate)} {
         set result [string map "{\n} {\\n}" $result]
@@ -142,7 +142,7 @@ proc ::xsdb::yaml::dict2yaml {dict {indent 2} {wordwrap 40}} {
 proc ::xsdb::yaml::huddle2yaml {huddle {indent 2} {wordwrap 40}} {
     set ::xsdb::yaml::_dumpIndent   $indent
     set ::xsdb::yaml::_dumpWordWrap $wordwrap
-    
+
     # Start at the base of the array and move through it.
     set out [join [list "---\n" [_imp_huddle2yaml $huddle] "\n"] ""]
     return $out
@@ -167,7 +167,7 @@ proc ::xsdb::yaml::_getOption {argv} {
     array set composer $options(composer)
     array set data [list validate $options(validate) types $options(types)]
     set isfile $options(isfile)
-    
+
     foreach {buffer} $argv break
     if {$isfile} {
         set fd [open $buffer r]
@@ -261,7 +261,7 @@ proc ::xsdb::yaml::_composePlain {value} {
 
 proc ::xsdb::yaml::_toType {value} {
     if {$value eq ""} {return [list !!str ""]}
-    
+
     set lowerval [string tolower $value]
     foreach {type} $::xsdb::yaml::data(types) {
         if {[info exists ::xsdb::yaml::parsers($type)]} {
@@ -323,11 +323,11 @@ proc ::xsdb::yaml::_parseBlockNode {{status ""} {indent -1}} {
                 continue
             } else {
                 _ungetc 2
-                
+
                 # [Spec]
-                # Since people perceive the�g-�hindicator as indentation, 
-                # nested block sequences may be indented by one less space 
-                # to compensate, except, of course, 
+                # Since people perceive the�g-�hindicator as indentation,
+                # nested block sequences may be indented by one less space
+                # to compensate, except, of course,
                 # if nested inside another block sequence.
                 incr current
             }
@@ -339,11 +339,11 @@ proc ::xsdb::yaml::_parseBlockNode {{status ""} {indent -1}} {
                 break
             } else {
                 _ungetc 2
-                
+
 #                 # [Spec]
-#                 # Since people perceive the�g-�hindicator as indentation, 
-#                 # nested block sequences may be indented by one less space 
-#                 # to compensate, except, of course, 
+#                 # Since people perceive the�g-�hindicator as indentation,
+#                 # nested block sequences may be indented by one less space
+#                 # to compensate, except, of course,
 #                 # if nested inside another block sequence.
 #                 incr current
             }
@@ -527,7 +527,7 @@ proc ::xsdb::yaml::_remove_duplication {dict} {
 # folding ">" (line separator is " ")
 proc ::xsdb::yaml::_parseBlockScalar {base separator} {
     foreach {explicit chomping} [_parseBlockIndicator] break
-    
+
     set idch [string repeat " " $explicit]
     set sep $separator
     foreach {indent c line} [_getLine] break
@@ -536,7 +536,7 @@ proc ::xsdb::yaml::_parseBlockScalar {base separator} {
     set first $indent
     set value $line
     set stop 0
-    
+
     while {![_eof]} {
         set pos [_getpos]
         foreach {indent c line} [_getLine] break
@@ -668,9 +668,9 @@ proc ::xsdb::yaml::_parseFlowNode {{status ""}} {
             }
             "\}" { ; # ends a flow mapping
                 if {$status ne "MAPPING"}  {error [_getErrorMessage MAPEND_NOT_IN_MAP] }
-		if { $result == "" } {
-		    set result [eval ::xsdb::huddle::huddle mapping $result]
-		}
+                if { $result == "" } {
+                    set result [eval ::xsdb::huddle::huddle mapping $result]
+                }
                 return $result
             }
             "\[" { ; # starts a flow sequence
@@ -832,7 +832,7 @@ proc ::xsdb::yaml::_parseDirective {} {
     variable shorthands
 
     set directive [_getToken]
-    
+
     if {[regexp {^%YAML} $directive]} {
         # YAML directive
         _skipSpaces
@@ -854,7 +854,7 @@ proc ::xsdb::yaml::_parseDirective {} {
 
 proc ::xsdb::yaml::_parseTagHandle {} {
     set token [_getToken]
-    
+
     if {[regexp {^(!|!\w*!)(.*)} $token nop handle named]} {
         # shorthand or non-specific Tags
         switch -- $handle {
@@ -863,7 +863,7 @@ proc ::xsdb::yaml::_parseTagHandle {} {
             !! { ;      # yaml Tags
             }
             default { ; # shorthand Tags
-                
+
             }
         }
         if {![info exists prefix($handle)]} { error [_getErrorMessage TAG_NOT_FOUND] }
@@ -873,7 +873,7 @@ proc ::xsdb::yaml::_parseTagHandle {} {
     } else {
         error [_getErrorMessage ILLEGAL_TAG_HANDLE]
     }
-    
+
     return "!<$prefix($handle)$named>"
 }
 
@@ -910,7 +910,7 @@ proc ::xsdb::yaml::_parseSingleQuoted {} {
     regsub -all { ?\r} $result "\n" result
 
     regsub -all {''} [string range $result 1 end-1] {'} chopped
-    
+
     return $chopped
 }
 
@@ -939,7 +939,7 @@ proc ::xsdb::yaml::_getFoldedString {reStr} {
     set buff [string range $data(buffer) $data(start) end]
     regexp $reStr $buff token
     if {![info exists token]} {return}
-    
+
     set len [string length $token]
     if {[string first "\n" $token] >= 0} { ; # multi-line
         set data(current) [expr {$len - [string last "\n" $token]}]
@@ -947,7 +947,7 @@ proc ::xsdb::yaml::_getFoldedString {reStr} {
         incr data(current) $len
     }
     incr data(start) $len
-    
+
     return $token
 }
 
@@ -1170,7 +1170,7 @@ proc ::xsdb::yaml::_doFolding {value offset} {
     if {$_dumpWordWrap == 0} {
         return $value
     }
-    
+
     if {[string length $value] > $_dumpWordWrap} {
         set wrapped [_simple_justify $value $_dumpWordWrap "\n$offset"]
         set value ">\n$offset$wrapped"

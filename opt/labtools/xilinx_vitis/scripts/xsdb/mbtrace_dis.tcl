@@ -660,7 +660,7 @@ namespace eval ::xsdb::mbtrace_dis {
             set arg ""
       }
 
-      # Result of operation stored in destination register (if any)  
+      # Result of operation stored in destination register (if any)
       # First check for exception
       set result ""
       if {$exception_taken == 1} {

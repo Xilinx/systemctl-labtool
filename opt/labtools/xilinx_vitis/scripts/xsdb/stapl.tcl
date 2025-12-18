@@ -30,88 +30,88 @@ namespace eval ::xsdb::stapl {
     ::xsdb::setcmdmeta stapl brief {STAPL Operations}
     variable stapltable [dict create]
     proc config {args} {
-	variable stapltable
-	set options {
-	    {part "device name" {args 1}}
-	    {handle "file handle" {args 1}}
-	    {out "output file path" {args 1}}
-	    {scan-chain "scan chain info" {args 1}}
-	    {checksum "calclates checksum of the stapl data"}
-	    {help "command help"}
-	}
+        variable stapltable
+        set options {
+            {part "device name" {args 1}}
+            {handle "file handle" {args 1}}
+            {out "output file path" {args 1}}
+            {scan-chain "scan chain info" {args 1}}
+            {checksum "calclates checksum of the stapl data"}
+            {help "command help"}
+        }
 
-	array set params [::xsdb::get_options args $options]
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help [lindex [info level 0] 0]]
-	}
-	if { !([info exists params(scan-chain)] ^ [info exists params(part)]) || \
-	    !([info exists params(handle)] ^ [info exists params(out)]) } {
-	    error "invalid arguments, specify -scan-chain/-part and -handle/-out options."
-	}
-	if { [info exists params(scan-chain)] } {
-	    foreach dev $params(scan-chain) {
-		if { ![dict exists $dev name] && ![dict exists $dev idcode] } {
-			error "missing device parameters, specify name or idcode for all devices"
-		}
-	    }
-	}
-	if { [info exists params(out)] } {
-	    dict set stapltable $xsdb::curchan "out" $params(out)
-	} else {
-	    dict set stapltable $xsdb::curchan "handle" $params(handle)
-	}
-	if { $params(checksum) } {
-	    dict set stapltable $xsdb::curchan "checksum" 1
-	} else {
-	    dict set stapltable $xsdb::curchan "checksum" 0
-	}
+        if { $params(help) } {
+            return [help [lindex [info level 0] 0]]
+        }
+        if { !([info exists params(scan-chain)] ^ [info exists params(part)]) || \
+            !([info exists params(handle)] ^ [info exists params(out)]) } {
+            error "invalid arguments, specify -scan-chain/-part and -handle/-out options."
+        }
+        if { [info exists params(scan-chain)] } {
+            foreach dev $params(scan-chain) {
+                if { ![dict exists $dev name] && ![dict exists $dev idcode] } {
+                        error "missing device parameters, specify name or idcode for all devices"
+                }
+            }
+        }
+        if { [info exists params(out)] } {
+            dict set stapltable $xsdb::curchan "out" $params(out)
+        } else {
+            dict set stapltable $xsdb::curchan "handle" $params(handle)
+        }
+        if { $params(checksum) } {
+            dict set stapltable $xsdb::curchan "checksum" 1
+        } else {
+            dict set stapltable $xsdb::curchan "checksum" 0
+        }
 
-	set target [format "target%03d" [lindex [split $xsdb::curchan "#"] 1 ]]
-	::tcf::send_command $xsdb::curchan svf reqAddTarget "o{name s}" eA [list [dict create name $target]]
-	set target_ctx [dict get [lindex [::xsdb::jtag::targets -target-properties -filter \
-			{name == "Xilinx Null Cable $target"}] 0] target_ctx]
+        set target [format "target%03d" [lindex [split $xsdb::curchan "#"] 1 ]]
+        ::tcf::send_command $xsdb::curchan svf reqAddTarget "o{name s}" eA [list [dict create name $target]]
+        set target_ctx [dict get [lindex [::xsdb::jtag::targets -target-properties -filter \
+                        {name == "Xilinx Null Cable $target"}] 0] target_ctx]
 
-	if { [info exists params(scan-chain)] } {
-	    foreach dev $params(scan-chain) {
-		if { [dict exists $dev name] } {
-		    if { ![dict exists $dev idcode] } {
-			dict set dev idcode 0
-		    }
-		    if { ![dict exists $dev irlen] } {
-			dict set dev irlen 0
-		    }
-		    if { ![dict exists $dev idcode2] } {
-			dict set dev idcode2 0
-		    }
-		    if { ![dict exists $dev mask] } {
-			dict set dev mask 0
-		    }
-		} else {
-		    dict set dev name ""
-		    if { ![dict exists $dev irlen] } {
-			dict set dev irlen 0
-		    }
-		    if { ![dict exists $dev idcode2] } {
-			dict set dev idcode2 0
-		    }
-		    if { ![dict exists $dev mask] } {
-			dict set dev mask 0
-		    }
-		}
-		::tcf::send_command $xsdb::curchan svf reqAddDevice "o{ctx s name s idcode i irlen i idcode2 i mask i}" eA \
-		    [list [dict create ctx $target_ctx name [dict get $dev name] idcode [dict get $dev idcode] irlen [dict get $dev irlen] \
-		    idcode2 [dict get $dev idcode2] mask [dict get $dev mask]]]
-	    }
-	}
+        if { [info exists params(scan-chain)] } {
+            foreach dev $params(scan-chain) {
+                if { [dict exists $dev name] } {
+                    if { ![dict exists $dev idcode] } {
+                        dict set dev idcode 0
+                    }
+                    if { ![dict exists $dev irlen] } {
+                        dict set dev irlen 0
+                    }
+                    if { ![dict exists $dev idcode2] } {
+                        dict set dev idcode2 0
+                    }
+                    if { ![dict exists $dev mask] } {
+                        dict set dev mask 0
+                    }
+                } else {
+                    dict set dev name ""
+                    if { ![dict exists $dev irlen] } {
+                        dict set dev irlen 0
+                    }
+                    if { ![dict exists $dev idcode2] } {
+                        dict set dev idcode2 0
+                    }
+                    if { ![dict exists $dev mask] } {
+                        dict set dev mask 0
+                    }
+                }
+                ::tcf::send_command $xsdb::curchan svf reqAddDevice "o{ctx s name s idcode i irlen i idcode2 i mask i}" eA \
+                    [list [dict create ctx $target_ctx name [dict get $dev name] idcode [dict get $dev idcode] irlen [dict get $dev irlen] \
+                    idcode2 [dict get $dev idcode2] mask [dict get $dev mask]]]
+            }
+        }
 
-	if { [info exists params(part)] } {
-	    foreach part $params(part) {
-		::tcf::send_command $xsdb::curchan svf reqAddDevice "o{ctx s name s idcode i irlen i idcode2 i mask i}" eA \
-		    [list [dict create ctx $target_ctx name $part idcode 0 irlen 0 idcode2 0 mask 0]]
-	    }
-	}
-	return
+        if { [info exists params(part)] } {
+            foreach part $params(part) {
+                ::tcf::send_command $xsdb::curchan svf reqAddDevice "o{ctx s name s idcode i irlen i idcode2 i mask i}" eA \
+                    [list [dict create ctx $target_ctx name $part idcode 0 irlen 0 idcode2 0 mask 0]]
+            }
+        }
+        return
     }
     namespace export config
     ::xsdb::setcmdmeta {stapl config} categories {stapl}
@@ -216,34 +216,34 @@ EXAMPLE {
 }
 
     proc start {args} {
-	variable stapltable
-	set options {
-	    {help "command help"}
-	}
+        variable stapltable
+        set options {
+            {help "command help"}
+        }
 
-	array set params [::xsdb::get_options args $options]
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help [lindex [info level 0] 0]]
-	}
+        if { $params(help) } {
+            return [help [lindex [info level 0] 0]]
+        }
 
-	if { $xsdb::curchan == "" } {
-	    error "invalid target, use connect command to connect to hw_server"
-	}
+        if { $xsdb::curchan == "" } {
+            error "invalid target, use connect command to connect to hw_server"
+        }
 
-	if { ![dict exists $stapltable $xsdb::curchan] } {
-	    error "run stapl config prior to this command"
-	}
+        if { ![dict exists $stapltable $xsdb::curchan] } {
+            error "run stapl config prior to this command"
+        }
 
-	if { [dict exists $stapltable $xsdb::curchan "out"] && ![dict exists $stapltable $xsdb::curchan "handle"] } {
-	    dict set stapltable $xsdb::curchan "handle" [open [dict get $stapltable $xsdb::curchan "out"] a+]
-	}
+        if { [dict exists $stapltable $xsdb::curchan "out"] && ![dict exists $stapltable $xsdb::curchan "handle"] } {
+            dict set stapltable $xsdb::curchan "handle" [open [dict get $stapltable $xsdb::curchan "out"] a+]
+        }
 
-	dict set stapltable $xsdb::curchan "done" 0
-	::tcf::send_command $xsdb::curchan stapl start s eA [list $::xsdb::jtag::curnode]
-	dict set stapltable $xsdb::curchan "started" 1
-	::tcf::send_command $xsdb::curchan Xicom configReset so{} e [list $::xsdb::jtag::curnode {}]
-	return
+        dict set stapltable $xsdb::curchan "done" 0
+        ::tcf::send_command $xsdb::curchan stapl start s eA [list $::xsdb::jtag::curnode]
+        dict set stapltable $xsdb::curchan "started" 1
+        ::tcf::send_command $xsdb::curchan Xicom configReset so{} e [list $::xsdb::jtag::curnode {}]
+        return
     }
     namespace export start
     ::xsdb::setcmdmeta {stapl start} categories {stapl}
@@ -267,40 +267,40 @@ RETURNS {
 }
 
     proc stop {args} {
-	variable stapltable
-	set options {
-	    {help "command help"}
-	}
+        variable stapltable
+        set options {
+            {help "command help"}
+        }
 
-	array set params [::xsdb::get_options args $options]
+        array set params [::xsdb::get_options args $options]
 
-	if { $params(help) } {
-	    return [help [lindex [info level 0] 0]]
-	}
+        if { $params(help) } {
+            return [help [lindex [info level 0] 0]]
+        }
 
-	if { $xsdb::curchan == "" } {
-	    error "invalid target, use connect command to connect to hw_server"
-	}
+        if { $xsdb::curchan == "" } {
+            error "invalid target, use connect command to connect to hw_server"
+        }
 
-	if { (![dict exists $stapltable $xsdb::curchan "started"]) || ([dict get $stapltable $xsdb::curchan "started"] == 0) } {
-	    error "run stapl start prior to this command"
-	}
+        if { (![dict exists $stapltable $xsdb::curchan "started"]) || ([dict get $stapltable $xsdb::curchan "started"] == 0) } {
+            error "run stapl start prior to this command"
+        }
 
-	dict set stapltable $xsdb::curchan "started" 0
+        dict set stapltable $xsdb::curchan "started" 0
 
-	::tcf::send_command $xsdb::curchan stapl stop s eA [list $::xsdb::jtag::curnode]
-	::tcf::send_command $xsdb::curchan stapl close s eA [list $::xsdb::jtag::curnode]
-	::xsdb::event_table_handler
+        ::tcf::send_command $xsdb::curchan stapl stop s eA [list $::xsdb::jtag::curnode]
+        ::tcf::send_command $xsdb::curchan stapl close s eA [list $::xsdb::jtag::curnode]
+        ::xsdb::event_table_handler
 
-	while { [dict get $stapltable $xsdb::curchan "done"] == 0} {
-	    after 50
-	    ::xsdb::event_table_handler
-	}
+        while { [dict get $stapltable $xsdb::curchan "done"] == 0} {
+            after 50
+            ::xsdb::event_table_handler
+        }
 
-	if { [dict exists $stapltable $xsdb::curchan "out"] } {
-	    close [dict get $stapltable $xsdb::curchan "handle"]
-	}
-	return
+        if { [dict exists $stapltable $xsdb::curchan "out"] } {
+            close [dict get $stapltable $xsdb::curchan "handle"]
+        }
+        return
     }
     namespace export stop
     ::xsdb::setcmdmeta {stapl stop} categories {stapl}

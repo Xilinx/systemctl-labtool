@@ -28,12 +28,12 @@ proc stdin_reader { chan } {
     global xsdb_socket
     set str [gets $chan]
     if { $str == "terminal_exit" } {
-	puts "CMD: terminal_exit. Closing JTAG-based Hyperterminal"
-	exit
+        puts "CMD: terminal_exit. Closing JTAG-based Hyperterminal"
+        exit
     }
 
     if { $str == "\n" } {
-	return
+        return
     }
 
     puts $xsdb_socket $str
@@ -42,12 +42,12 @@ proc stdin_reader { chan } {
 # Print DCC/MDM UART output from sockets to StdOut
 proc stdout_writer { chan } {
     if { [eof $chan] } {
-	exit
+        exit
     }
     set str [read $chan 1000]
     if { $str == "xsdb_exit" } {
-	close $chan
-	exit
+        close $chan
+        exit
     }
     puts -nonewline $str
     flush stdout
