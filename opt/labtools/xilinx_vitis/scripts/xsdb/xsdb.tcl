@@ -516,8 +516,7 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
                                             if { $clear_tcm } {
                                                 if { $split_mode } {
                                                     if { ($mem_addr >= $tcm1_start && $mem_addr < [expr $tcm1_start + $tcm1_size]) ||
-                                                        ($mem_addr >= $tcm2_start && $mem_addr < [expr $tcm2_start + $tcm2_size]) ||
-                                                        ($mem_addr >= $tcm3_start && $mem_addr < [expr $tcm3_start + $tcm3_size]) } {
+                                                        ($mem_addr >= $tcm2_start && $mem_addr < [expr $tcm2_start + $tcm2_size]) } {
                                                         set clear_tcm 0
                                                         set tcm_cleared 1
                                                         if { $tcm1_size > 0 } {
@@ -527,10 +526,6 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
                                                         if { $tcm2_size > 0 } {
                                                             lappend actions [list clear $tcm2_start $tcm2_size]
                                                             incr total_bytes $tcm2_size
-                                                        }
-                                                        if { $tcm3_size > 0 } {
-                                                            lappend actions [list clear $tcm3_start $tcm3_size]
-                                                            incr total_bytes $tcm3_size
                                                         }
                                                     }
                                                 } else {
@@ -551,16 +546,12 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
                                                 if { $tcm_cleared == 1 } {
                                                     if { $split_mode } {
                                                         set mem_end [expr {$mem_addr + $memsz}]
-                                                        set results [list 0 0 0 $mem_addr $mem_end]
-                                                        # Calculate TCM end addresses (missing initialization)
+                                                        set results [list 0 0 $mem_addr $mem_end]
                                                         set tcm1_end [expr {$tcm1_start + $tcm1_size}]
                                                         set tcm2_end [expr {$tcm2_start + $tcm2_size}]
-                                                        set tcm3_end [expr {$tcm3_start + $tcm3_size}]
-                                                        # TCM regions configuration
                                                         set tcm_regions [list \
                                                             [list $tcm1_start $tcm1_end] \
                                                             [list $tcm2_start $tcm2_end] \
-                                                            [list $tcm3_start $tcm3_end] \
                                                         ]
                                                         # Check each TCM region for overlap with memory segment
                                                         set i 0
@@ -572,26 +563,26 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
                                                                 # Mark this TCM as overlapping
                                                                 lset results $i 1
 
-                                                                set current_clear_start [lindex $results 3]
-                                                                set current_clear_end [lindex $results 4]
+                                                                set current_clear_start [lindex $results 2]
+                                                                set current_clear_end [lindex $results 3]
 
                                                                 # Extend clear range to include the entire TCM region
                                                                 if {$tcm_start < $current_clear_start} {
-                                                                    lset results 3 $tcm_start
+                                                                    lset results 2 $tcm_start
                                                                 }
                                                                 if {$tcm_end > $current_clear_end} {
-                                                                    lset results 4 $tcm_end
+                                                                    lset results 3 $tcm_end
                                                                 }
                                                             }
                                                             incr i
                                                         }
 
                                                         # Extract TCM overlap analysis results
-                                                        lassign $results has_tcm1_overlap has_tcm2_overlap has_tcm3_overlap clear_start_addr clear_end_addr
+                                                        lassign $results has_tcm1_overlap has_tcm2_overlap clear_start_addr clear_end_addr
 
                                                         # Since TCM regions are already cleared earlier, we only need to clear
                                                         # the non-TCM portions of the memory range
-                                                        set any_tcm_overlap [expr {$has_tcm1_overlap || $has_tcm2_overlap || $has_tcm3_overlap}]
+                                                        set any_tcm_overlap [expr {$has_tcm1_overlap || $has_tcm2_overlap}]
 
                                                         if {$any_tcm_overlap} {
                                                             # Build sorted list of overlapping TCM regions to identify gaps
@@ -601,9 +592,6 @@ if { [string first "xsdb" [file tail [info nameofexecutable]]] != -1 } {
                                                             }
                                                             if {$has_tcm2_overlap} {
                                                                 lappend overlapping_tcm_regions [list $tcm2_start $tcm2_end]
-                                                            }
-                                                            if {$has_tcm3_overlap} {
-                                                                lappend overlapping_tcm_regions [list $tcm3_start $tcm3_end]
                                                             }
 
                                                             # Sort TCM regions by start address for linear processing
@@ -5636,15 +5624,11 @@ EXAMPLE {
                             set params(tcm1_size) 0x10000
                             set params(tcm2_start) 0x20000
                             set params(tcm2_size) 0x10000
-                            set params(tcm3_start) 0x0        ;# just to make complience with R52 code and use same logic, don't have any effect on actual TCM clear
-                            set params(tcm3_size) 0x0         ;# just to make complience with R52 code and use same logic, don't have any effect on actual TCM clear
                         } else {
                             set params(tcm1_start) 0x0
                             set params(tcm1_size) 0x40000
-                            set params(tcm2_start) 0x0        ;# Added to use same logic, don't have any effect on actual TCM clear
-                            set params(tcm2_size) 0x0         ;# Added to use same logic, don't have any effect on actual TCM clear
-                            set params(tcm3_start) 0x0        ;# Added to use same logic, don't have any effect on actual TCM clear
-                            set params(tcm3_size) 0x0         ;# Added to use same logic, don't have any effect on actual TCM clear
+                            set params(tcm2_start) 0x0
+                            set params(tcm2_size) 0x0
                         }
                         set params(clear_tcm) 1
                         set tcm_clear_warnings 0
@@ -5653,58 +5637,6 @@ EXAMPLE {
                               \r         Further warnings will be suppressed"
                         break
                     }
-                }
-            } elseif { [dict_get_safe $rc CPUType] == "ARM" && [dict_get_safe $rc ARMType] == "Cortex-R52" } {
-                set rc1 [lindex [::tcf::cache_eval $params(chan) [list get_context_cache_client $params(chan) [dict get $rc ParentID] RunControl:context]] 1]
-                set core_name [dict get $rc Name]
-                set cluster_name [dict get $rc1 Name]
-                if { $cluster_name ne "" } {
-                    switch $cluster_name {
-                        "RPU Cluster #0" {
-                            set rpu_glbl_cntl 0xEB580000
-                        }
-                        "RPU Cluster #1" {
-                            set rpu_glbl_cntl 0xEB590000
-                        }
-                        "RPU Cluster #2" {
-                            set rpu_glbl_cntl 0xEB5A0000
-                        }
-                        "RPU Cluster #3" {
-                            set rpu_glbl_cntl 0xEB5B0000
-                        }
-                        "RPU Cluster #4" {
-                            set rpu_glbl_cntl 0xEB5C0000
-                        }
-                        default {
-                            set params(clear_tcm) 1
-                            set tcm_clear_warnings 0
-                            puts "WARNING: Unknown RPU cluster name. TCM clear skipped.\n\
-                                \r         Further warnings will be suppressed"
-                        }
-                    }
-                    set params(split_mode) [expr [mrd -force -value $rpu_glbl_cntl] & 0x01]
-                    if { $params(split_mode) } {
-                        puts "WARNING: R52 TCM is in split mode"
-                        set params(tcm1_start) 0x0    ;# TCM_A_START
-                        set params(tcm1_size) 0x10000   ;# TCM_A_SIZE
-                        set params(tcm2_start) 0x10000  ;# TCM_B_START
-                        set params(tcm2_size) 0x8000    ;# TCM_B_SIZE
-                        set params(tcm3_start) 0x20000  ;# TCM_C_START
-                        set params(tcm3_size) 0x8000    ;# TCM_C_SIZE
-                    } else {
-                        puts "WARNING: R52 TCM is in unified mode"
-                        set params(tcm1_start) 0x0
-                        set params(tcm1_size) 0x40000
-                        set params(tcm2_start) 0x0
-                        set params(tcm2_size) 0x0         ;# Added to use same logic, don't have any effect on actual TCM clear
-                        set params(tcm3_start) 0x0        ;# Added to use same logic, don't have any effect on actual TCM clear
-                        set params(tcm3_size) 0x0         ;# Added to use same logic, don't have any effect on actual TCM clear
-                    }
-                    set params(clear_tcm) 1
-                    set tcm_clear_warnings 0
-                    puts "WARNING: R52 TCM will be cleared if any of the elf sections use TCM.\n\
-                        \r         Use -skip-tcm-clear to skip this.\n\
-                        \r         Further warnings will be suppressed"
                 }
             }
         }
