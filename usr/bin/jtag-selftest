@@ -36,7 +36,8 @@ PERF_TIMEOUT=120
 ITERATION_TIMEOUT=600
 
 PROXY="/dev/xavc_jc_proxy0"
-HWS_INIT="/etc/hws0.txt"
+# hw_server reads the init file that jtag-mode.service links for the board.
+HWS_INIT="/run/labtool/hws.txt"
 CONFIG_UNIT="jtag-controller-config.service"
 DMA_HEAP_TEST="/usr/bin/dma_heap_test"
 JTAG_DEBUG_TEST="/opt/labtools/test/jtag_debug_test"
@@ -818,20 +819,20 @@ EOF
 
 stage_hws() {
     if ! prereqs_ok 1; then
-        skip_blocked 7 "hws0.txt"
+        skip_blocked 7 "hw_server init"
         return
     fi
     begin 7 "Checking the hw_server init file $HWS_INIT"
     if [[ ! -r "$HWS_INIT" ]]; then
-        record 7 "hws0.txt" FAIL "$HWS_INIT missing"
+        record 7 "hw_server init" FAIL "$HWS_INIT missing"
         return
     fi
     local servers
     servers="$(awk '$1 == "set" && $2 == "auto-open-servers" { print $3 }' "$HWS_INIT")"
     if [[ ",$servers," == *",pcie-js:$PROXY,"* ]]; then
-        record 7 "hws0.txt" PASS "-> $PROXY"
+        record 7 "hw_server init" PASS "-> $PROXY"
     else
-        record 7 "hws0.txt" FAIL "auto-open-servers is '${servers:-unset}', expected pcie-js:$PROXY"
+        record 7 "hw_server init" FAIL "auto-open-servers is '${servers:-unset}', expected pcie-js:$PROXY"
     fi
 }
 
