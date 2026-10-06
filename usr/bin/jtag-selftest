@@ -1,0 +1,1450 @@
+#!/bin/bash
+#
+# Copyright (c) 2026 Advanced Micro Devices, Inc.  All rights reserved.
+#
+# SPDX-License-Identifier: MIT
+#
+# jtag-selftest: validate the system controller JTAG controller path, from the
+# PL firmware load through hw_server to live JTAG traffic, and optionally DUT
+# programming, BIT and JTAG clock performance sweeps. Every stage runs; stages
+# whose prerequisites failed are skipped, and a PASS/FAIL summary is printed
+# at the end.
+#
+# Exit codes:
+#   0  all stages passed (stages skipped by option do not count)
+#   1  one or more stages failed
+#   2  usage or preflight error
+#
+
+LEVEL="basic"
+REPAIR=0
+DEBUG_FREQ=30
+# The JTAG debug test runs for DEBUG_TIME seconds, unless --debug-iterations
+# asks for a fixed number of iterations instead (0 = time mode).
+DEBUG_TIME=30
+DEBUG_TIME_SET=0
+DEBUG_ITERATIONS=0
+BIT_ALL=0
+PERF=0
+FREQS=(30 50 100)
+PDI_OVERRIDE=""
+LOG_ROOT="/var/log/jtag-selftest"
+
+# Upper bound on one perf run; the cable sweep normally completes well before.
+PERF_TIMEOUT=120
+# Upper bound on one jtag_debug_test iteration before it counts as hung.
+ITERATION_TIMEOUT=600
+
+PROXY="/dev/xavc_jc_proxy0"
+HWS_INIT="/etc/hws0.txt"
+CONFIG_UNIT="jtag-controller-config.service"
+DMA_HEAP_TEST="/usr/bin/dma_heap_test"
+JTAG_DEBUG_TEST="/opt/labtools/test/jtag_debug_test"
+XSDB="/opt/labtools/xilinx_vitis/xsdb"
+XSDB_ENV="/etc/profile.d/xsdb-variables.sh"
+BIT_ROOT="/usr/share/system-controller-app/BIT"
+
+# The JTAG controller design reports its version at this address, inside the
+# jtag_clock register block.
+VERSION_ADDR=0x800003FC
+EXPECTED_VERSION=0x10AE
+
+usage() {
+    local prog
+    prog="$(basename "$0")"
+    cat <<EOF
+Usage: $prog [options]
+
+Validate the system controller JTAG path and print a PASS/FAIL summary.
+
+Options:
+  --level basic|full  basic: non-destructive checks and JTAG debug test (default)
+                      full:  also program the DUT and run DDRMC_1 Cal Test
+  --bit-all           with --level full, run IDCODE Verify and every
+                      DDRMC_* Cal Test instead of DDRMC_1 only
+  --perf              measure JTAG cable throughput at each --freqs clock;
+                      with --level full, also time DUT programming at each
+  --freqs <list>      comma-separated JTAG clocks in MHz (default $(IFS=,; echo "${FREQS[*]}"))
+  --repair            on failure, restart $CONFIG_UNIT,
+                      hw_server and cs_server, then re-check
+  --debug-freq <MHz>  JTAG clock for the JTAG debug test (default $DEBUG_FREQ)
+  --debug-time <sec>  how long to run the JTAG debug test; passes if
+                      jtag_debug_test is still running at the end (default $DEBUG_TIME)
+  --debug-iterations <n>
+                      instead of a fixed time, run n jtag_debug_test -fast
+                      iterations and pass if they finish without errors
+  --pdi <path>        PDI to program with --level full (default: autodetect)
+  --log-dir <dir>     log root (default $LOG_ROOT)
+  -h, --help          show this help
+
+Examples:
+  $prog                          health check, 30s JTAG debug test, ~1 minute
+  $prog --debug-time 600         run the JTAG debug test for 10 minutes
+  $prog --debug-iterations 1     one -fast iteration instead of a fixed time
+  $prog --debug-freq 10          run the JTAG debug test at 10 MHz
+  $prog --level full             also program the DUT, run DDRMC_1 BIT
+  $prog --level full --bit-all   run IDCODE and all DDRMC BIT tests
+  $prog --level full --repair    full run, restarting services on failure
+  $prog --perf                   cable throughput at 30, 50 and 100 MHz
+  $prog --level full --perf      also time programming at each clock
+  $prog --perf --freqs 10,20     throughput at chosen clocks
+  $prog --level full --pdi /path/to/design.pdi
+
+Must run as root. The JTAG mux is set to SC and is not restored afterwards.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --level)
+            if [[ "$2" != "basic" && "$2" != "full" ]]; then
+                echo "Error: --level must be 'basic' or 'full'." >&2
+                usage >&2
+                exit 2
+            fi
+            LEVEL="$2"
+            shift 2
+            ;;
+        --bit-all)
+            BIT_ALL=1
+            shift
+            ;;
+        --perf)
+            PERF=1
+            shift
+            ;;
+        --freqs)
+            if [[ ! "$2" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
+                echo "Error: --freqs requires a comma-separated list of MHz values, e.g. 30,50,100." >&2
+                usage >&2
+                exit 2
+            fi
+            IFS=',' read -ra FREQS <<<"$2"
+            shift 2
+            ;;
+        --repair)
+            REPAIR=1
+            shift
+            ;;
+        --debug-freq|--debug-iterations|--debug-time)
+            if [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: $1 requires a positive whole number." >&2
+                usage >&2
+                exit 2
+            fi
+            case "$1" in
+                --debug-freq) DEBUG_FREQ="$2" ;;
+                --debug-iterations) DEBUG_ITERATIONS="$2" ;;
+                --debug-time) DEBUG_TIME="$2"; DEBUG_TIME_SET=1 ;;
+            esac
+            shift 2
+            ;;
+        --pdi)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --pdi requires a path argument." >&2
+                usage >&2
+                exit 2
+            fi
+            PDI_OVERRIDE="$2"
+            shift 2
+            ;;
+        --log-dir)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --log-dir requires a path argument." >&2
+                usage >&2
+                exit 2
+            fi
+            LOG_ROOT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+if (( DEBUG_ITERATIONS && DEBUG_TIME_SET )); then
+    echo "Error: use either --debug-time or --debug-iterations, not both." >&2
+    exit 2
+fi
+
+#########################################################################
+# Terminal output
+#########################################################################
+USE_COLOR=0
+[[ -t 1 ]] && USE_COLOR=1
+TTY_ERR=0
+[[ -t 2 ]] && TTY_ERR=1
+
+# Progress goes to stderr so stdout carries only results.
+progress() {
+    ticker_clear
+    printf '[%s] %s\n' "$1" "$2" >&2
+}
+
+# Highest stage number, shown as the denominator in stage headers.
+LAST_STAGE=15
+
+# begin <id> <description>: announce a stage as it starts, so the user can see
+# what is being checked while it runs.
+begin() {
+    ticker_clear
+    printf '[%2d/%d] %s\n' "$1" "$LAST_STAGE" "$2" >&2
+}
+
+# ticker <id> <message> <elapsed>: status line for long waits. On a terminal
+# it overwrites itself; otherwise it prints every 30s to keep logs short.
+ticker() {
+    if (( TTY_ERR )); then
+        printf '\r\033[K[%s] %s' "$1" "$2" >&2
+    elif (( $3 % 30 == 0 )); then
+        printf '[%s] %s\n' "$1" "$2" >&2
+    fi
+}
+
+ticker_clear() {
+    if (( TTY_ERR )); then
+        printf '\r\033[K' >&2
+    fi
+}
+
+colorize() {
+    local code
+    case "$1" in
+        PASS) code=32 ;;
+        FAIL) code=31 ;;
+        *)    code=33 ;;
+    esac
+    if (( USE_COLOR )); then
+        printf '\033[%sm%-4s\033[0m' "$code" "$1"
+    else
+        printf '%-4s' "$1"
+    fi
+}
+
+#########################################################################
+# Result bookkeeping
+#########################################################################
+declare -a ORDER=()
+declare -A NAME=() RESULT=() DETAIL=() EXTRA=()
+
+print_row() {
+    local dots
+    dots="$(printf '%*s' $((20 - ${#NAME[$1]})) '' | tr ' ' '.')"
+    printf ' %2s  %s %s %s   %s\n' \
+        "$1" "${NAME[$1]}" "$dots" "$(colorize "${RESULT[$1]}")" "${DETAIL[$1]}"
+    if [[ -n "${EXTRA[$1]}" ]]; then
+        printf '%s' "${EXTRA[$1]}" | sed 's/^/       /'
+    fi
+}
+
+# record <id> <name> <PASS|FAIL|SKIP> <detail>: store the result and print the
+# row immediately. Add any evidence with add_extra before calling this.
+record() {
+    [[ -v RESULT[$1] ]] || ORDER+=("$1")
+    NAME[$1]="$2"
+    RESULT[$1]="$3"
+    DETAIL[$1]="$4"
+    ticker_clear
+    print_row "$1"
+}
+
+# add_extra <id> <line>: indented evidence printed under the stage's row
+add_extra() {
+    EXTRA[$1]+="$2"$'\n'
+}
+
+# Succeed if every listed stage passed; otherwise set BLOCKED_BY.
+prereqs_ok() {
+    local id
+    for id in "$@"; do
+        if [[ "${RESULT[$id]}" != "PASS" ]]; then
+            BLOCKED_BY="$id"
+            return 1
+        fi
+    done
+}
+
+skip_blocked() {
+    record "$1" "$2" SKIP "blocked by ${NAME[$BLOCKED_BY]}"
+}
+
+#########################################################################
+# Helpers
+#########################################################################
+
+# Grade a systemd unit by its own declared Type and RemainAfterExit. A oneshot
+# without RemainAfterExit ends 'inactive (dead)' on success, so 'is-active'
+# cannot be used. Sets UNIT_DETAIL; returns 0 if the unit is healthy.
+check_unit() {
+    local key value
+    local -A p=()
+
+    while IFS='=' read -r key value; do
+        p[$key]="$value"
+    done < <(systemctl show "$1" -p LoadState -p Type -p RemainAfterExit \
+                 -p ActiveState -p SubState -p Result -p ExecMainStatus \
+                 -p NRestarts -p MainPID -p ExecMainStartTimestampMonotonic \
+                 2>/dev/null)
+
+    if [[ "${p[LoadState]}" != "loaded" ]]; then
+        UNIT_DETAIL="not loaded (${p[LoadState]:-unknown})"
+        return 1
+    fi
+
+    case "${p[Type]}/${p[RemainAfterExit]}" in
+        oneshot/no)
+            UNIT_DETAIL="oneshot, Result=${p[Result]}, exit ${p[ExecMainStatus]}"
+            # Result defaults to success for a unit that never ran, so also
+            # require that the main process actually started.
+            [[ "${p[ExecMainStartTimestampMonotonic]:-0}" != "0" &&
+               "${p[Result]}" == "success" &&
+               "${p[ExecMainStatus]}" == "0" ]]
+            ;;
+        oneshot/yes)
+            UNIT_DETAIL="${p[ActiveState]} (${p[SubState]}), Result=${p[Result]}"
+            [[ "${p[ActiveState]}" == "active" ]]
+            ;;
+        *)
+            # Restart=always units still read 'active' while crash-looping;
+            # NRestarts is the only visible symptom, so always report it.
+            UNIT_DETAIL="${p[ActiveState]} (${p[SubState]}), ${p[NRestarts]:-0} restarts"
+            [[ "${p[ActiveState]}" == "active" && "${p[SubState]}" == "running" ]] &&
+                (( ${p[MainPID]:-0} > 0 )) && kill -0 "${p[MainPID]}" 2>/dev/null
+            ;;
+    esac
+}
+
+# Succeed if UIO name $1 is $2 or $2@<address>, e.g. jtag_ctl@80010000.
+uio_name_is() {
+    [[ "$1" == "$2" || "$1" == "$2@"* ]]
+}
+
+# Print the uioN whose name is $1 or $1@<address>.
+find_uio() {
+    local f
+    for f in /sys/class/uio/uio*/name; do
+        [[ -r "$f" ]] || continue
+        if uio_name_is "$(<"$f")" "$1"; then
+            basename "$(dirname "$f")"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Succeed if $1 is a /dev/uioN node whose UIO name is $2.
+uio_dev_is() {
+    local name
+    [[ -c "$1" ]] || return 1
+    name="$(cat "/sys/class/uio/$(basename "$1")/name" 2>/dev/null)" || return 1
+    uio_name_is "$name" "$2"
+}
+
+# A child that has exited but not been reaped still answers kill -0, so read
+# the process state instead.
+is_running() {
+    local stat
+    stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 1
+    stat="${stat##*) }"
+    [[ -n "$stat" && "${stat:0:1}" != "Z" ]]
+}
+
+stop_process() {
+    pkill -TERM -P "$1" 2>/dev/null
+    kill -TERM "$1" 2>/dev/null
+    for _ in 1 2 3 4 5; do
+        is_running "$1" || break
+        sleep 1
+    done
+    if is_running "$1"; then
+        pkill -KILL -P "$1" 2>/dev/null
+        kill -KILL "$1" 2>/dev/null
+    fi
+    wait "$1" 2>/dev/null
+}
+
+# jtag_debug_test drives the JTAG controller directly, so hw_server must not
+# hold it at the same time. cs_server is PartOf hw_server and would stop with
+# it, but does not come back when hw_server is started, so handle both.
+hw_server_stop() {
+    local start=$SECONDS secs
+    progress "${1:-}" "stopping hw_server and cs_server"
+    systemctl stop hw_server.service cs_server.service >>"$RUN_DIR/services.log" 2>&1
+    HW_SERVER_STOPPED=1
+    # A healthy hw_server stops at once. One stuck on a JTAG transfer spins
+    # and ignores SIGTERM until systemd kills it after its stop timeout.
+    secs=$((SECONDS - start))
+    if (( secs >= 30 )) && [[ -n "${1:-}" ]]; then
+        add_extra "$1" "hw_server took ${secs}s to stop (hung; killed by systemd)"
+    fi
+}
+
+# Start hw_server and cs_server again, wait until hw_server accepts
+# connections, then check that a JTAG scan through it completes. Returns 1 and
+# sets HW_START_DETAIL if it does not come back usable.
+hw_server_start() {
+    local up=0
+    progress "${1:-}" "starting hw_server and cs_server"
+    systemctl start hw_server.service cs_server.service >>"$RUN_DIR/services.log" 2>&1
+    HW_SERVER_STOPPED=0
+    for _ in $(seq 30); do
+        if (exec 3<>/dev/tcp/127.0.0.1/3121) 2>/dev/null; then
+            up=1
+            break
+        fi
+        sleep 1
+    done
+    if (( ! up )); then
+        HW_START_DETAIL="not listening on 3121"
+        return 1
+    fi
+    # Listening precedes hw_server opening the pcie-js server.
+    sleep 2
+    if ! jtag_probe; then
+        HW_START_DETAIL="$JTAG_PROBE_DETAIL"
+        return 1
+    fi
+}
+
+# run_xsdb <timeout seconds> <script> [args]: a JTAG controller that stops
+# completing transfers makes xsdb wait forever, so every call is bounded.
+run_xsdb() {
+    local secs="$1"
+    shift
+    (
+        # shellcheck disable=SC1090
+        [[ -r "$XSDB_ENV" ]] && . "$XSDB_ENV"
+        timeout "$secs" "$XSDB" "$@"
+    )
+}
+
+# Scan the JTAG chain through hw_server. Sets JTAG_PROBE_DETAIL; returns 1 if
+# the scan does not finish or finds no device behind the controller.
+jtag_probe() {
+    local log="$RUN_DIR/jtag_probe.log" rc devices
+    run_xsdb 30 "$RUN_DIR/jtag_probe.tcl" >"$log" 2>&1
+    rc=$?
+    if (( rc == 124 )); then
+        JTAG_PROBE_DETAIL="JTAG scan through hw_server timed out after 30s (controller unresponsive)"
+        return 1
+    fi
+    devices="$(tr -d '\r' <"$log" | grep -c 'idcode')"
+    if ! tr -d '\r' <"$log" | grep -qx PROBE_DONE || (( devices == 0 )); then
+        JTAG_PROBE_DETAIL="JTAG scan found no device behind $PROXY, see jtag_probe.log"
+        return 1
+    fi
+    # Lines look like "  3  xc2ve3858 (idcode 04db0093 irlen 6 pdi_programmable)".
+    local chain
+    chain="$(tr -d '\r' <"$log" |
+                 sed -n 's/^ *[0-9]* *\([^ ]*\) (idcode \([0-9a-fA-F]*\).*/\1 (\2)/p' |
+                 paste -sd, - | sed 's/,/, /g')"
+    PROBE_DEVICE="$(tr -d '\r' <"$log" | grep -m1 pdi_programmable |
+                        sed -n 's/^ *[0-9]* *\([^ ]*\) (idcode.*/\1/p')"
+    JTAG_PROBE_DETAIL="JTAG scan OK: $chain"
+}
+
+# Print the value of "<KEY> <value>" lines emitted by our xsdb scripts.
+xsdb_value() {
+    tr -d '\r' <"$2" | awk -v key="$1" '$1 == key { print $2; exit }'
+}
+
+# Print "1 iteration" or "<n> iterations".
+iterations() {
+    if (( $1 == 1 )); then
+        echo "1 iteration"
+    else
+        echo "$1 iterations"
+    fi
+}
+
+mhz() {
+    awk -v hz="$1" 'BEGIN { printf "%.3f", hz / 1e6 }'
+}
+
+# Write the xsdb scripts used by the programming and perf stages.
+write_tcl() {
+    # Replaces jtag_ready from xsdb_funcs.tcl, which still connects the retired
+    # XVC URL TCP:127.0.0.1:2542 and leaves a dead XVC cable in hw_server's
+    # list. hw_server already opens the JTAG controller from hws0.txt.
+    # shellcheck disable=SC2016  # Tcl variables, not shell
+    local jtag_ready_proc='proc jtag_ready {} {
+    connect
+    for {set retry 0} {$retry < 25} {incr retry} {
+        if {[string first "closed" [jtag targets]] == -1} {
+            break
+        }
+        after 100
+    }
+}'
+
+    cat >"$RUN_DIR/program_pdi.tcl" <<EOF
+# program_pdi.tcl <pdi> [<jtag clock hz>]
+# Same sequence as versal_bit_download.tcl and load_default_pdi, with an
+# optional JTAG clock and timing around 'device program'.
+source "$BIT_ROOT/xsdb_funcs.tcl"
+$jtag_ready_proc
+
+set pdi [lindex \$argv 0]
+set freq [lindex \$argv 1]
+set dut [device_under_test]
+if {\$dut == "versal"} {
+    set jtag_bootmode 0
+} elseif {\$dut == "spartanup"} {
+    set jtag_bootmode 5
+} else {
+    puts "ERROR: unsupported \$dut device-under-test"
+    disconnect
+    exit 1
+}
+
+# Select the controller by name, in case other cables are open on hw_server.
+if {[catch {
+    jtag targets -set -filter {level == 0 && name =~ "*$PROXY*"}
+    if {\$freq != ""} {
+        jtag frequency \$freq
+    }
+    puts "FREQ [jtag frequency]"
+} err]} {
+    puts "ERROR: \$err"
+    disconnect
+    exit 1
+}
+
+dut_connect \$dut
+switch_bootmode \$dut \$jtag_bootmode
+set start [clock milliseconds]
+if {[catch {device program \$pdi} err]} {
+    puts "ERROR: \$err"
+    disconnect
+    exit 1
+}
+puts "TIME_MS [expr {[clock milliseconds] - \$start}]"
+puts "PROGRAMMED"
+disconnect
+exit 0
+EOF
+
+    cat >"$RUN_DIR/silicon.tcl" <<EOF
+# silicon.tcl: print ES1 or PROD, as idcode_verify.tcl 0 does
+source "$BIT_ROOT/xsdb_funcs.tcl"
+$jtag_ready_proc
+
+jtag_ready
+set revision [silicon_revision]
+if {\$revision == "es1_"} {
+    puts "SILICON ES1"
+} elseif {\$revision == ""} {
+    puts "SILICON PROD"
+} else {
+    puts "ERROR: silicon revision '\$revision'"
+}
+disconnect
+exit 0
+EOF
+
+    cat >"$RUN_DIR/jtag_freq.tcl" <<EOF
+# jtag_freq.tcl [<jtag clock hz>]: optionally set the cable clock, then print it
+source "$BIT_ROOT/xsdb_funcs.tcl"
+$jtag_ready_proc
+
+jtag_ready
+if {[catch {
+    jtag targets -set -filter {level == 0 && name =~ "*$PROXY*"}
+    if {[llength \$argv] > 0} {
+        jtag frequency [lindex \$argv 0]
+    }
+    puts "FREQ [jtag frequency]"
+} err]} {
+    puts "ERROR: \$err"
+    disconnect
+    exit 1
+}
+disconnect
+exit 0
+EOF
+
+    cat >"$RUN_DIR/jtag_probe.tcl" <<EOF
+# jtag_probe.tcl: scan the JTAG chain through hw_server and list it
+source "$BIT_ROOT/xsdb_funcs.tcl"
+$jtag_ready_proc
+
+jtag_ready
+puts [jtag targets]
+puts "PROBE_DONE"
+disconnect
+exit 0
+EOF
+}
+
+# jtag_freq [hz]: optionally set the JTAG cable clock, then print it in Hz.
+jtag_freq() {
+    local log="$RUN_DIR/jtag_freq.log"
+    run_xsdb 30 "$RUN_DIR/jtag_freq.tcl" "$@" >>"$log" 2>&1
+    tr -d '\r' <"$log" | awk '$1 == "FREQ" { value = $2 } END { print value }'
+    : >"$log"
+}
+
+# Pick the PDI for this board and silicon variant (ES1 or PROD), preferring a
+# board-revision-specific image such as A01_es1_system_wrapper.pdi.
+resolve_pdi() {
+    local dir="$BIT_ROOT/$BOARD" base rev candidate
+    if [[ "$1" == "ES1" ]]; then
+        base="es1_system_wrapper.pdi"
+    else
+        base="system_wrapper.pdi"
+    fi
+    rev="${HW_REV^^}"
+    for candidate in ${rev:+"$dir/${rev}_$base"} "$dir/$base"; do
+        if [[ -r "$candidate" ]]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# peak_rate <header> <unit> <log>: print "<peak> complete|partial" for the
+# throughput rows following a header line such as "JTAG cable tests:". The
+# sweep is partial when the log ends on a throughput row, i.e. jtag_debug_test
+# was stopped mid-sweep before the larger, faster transfer sizes ran.
+peak_rate() {
+    awk -v header="$1" -v unit="$2" '
+        { sub(/\r$/, "") }
+        index($0, header) == 1 { in_block = 1; next }
+        in_block && !/^ / { in_block = 0 }
+        in_block {
+            last_rate = 0
+            for (i = 2; i <= NF; i++)
+                if ($i == unit) {
+                    last_rate = 1
+                    if ($(i - 1) + 0 > max)
+                        max = $(i - 1) + 0
+                }
+        }
+        END {
+            if (max)
+                printf "%.3f %s", max, (in_block && last_rate) ? "partial" : "complete"
+        }' "$3"
+}
+
+# Print the JTAG clock in Hz that jtag_debug_test reports using.
+log_clock() {
+    awk '/^JTAG clock frequency:/ { getline; sub(/\r$/, ""); print $NF; exit }' "$1"
+}
+
+# Restore the JTAG clock to $2 Hz after a perf stage, noting the outcome as
+# evidence on stage $1. Returns 1 if the clock could not be restored.
+restore_clock() {
+    local now
+    if [[ -z "$2" ]]; then
+        add_extra "$1" "JTAG clock was not readable beforehand, so it was not restored"
+        return 0
+    fi
+    now="$(jtag_freq "$2")"
+    if [[ "$now" == "$2" ]]; then
+        add_extra "$1" "JTAG clock restored to $(mhz "$2") MHz"
+        return 0
+    fi
+    add_extra "$1" "could not restore JTAG clock to $(mhz "$2") MHz (now ${now:-unknown})"
+    return 1
+}
+
+#########################################################################
+# Stages
+#########################################################################
+
+stage_preflight() {
+    BOARD="$(sc_app -c board 2>/dev/null | tr -d '[:space:]')"
+    if [[ -z "$BOARD" ]]; then
+        echo "Error: could not identify the board with 'sc_app -c board'." >&2
+        exit 2
+    fi
+    HW_REV="$(sc-board-id --hw-rev 2>/dev/null)"
+    print_banner
+    begin 0 "Checking root access and identifying the board"
+    record 0 "preflight" PASS "root, $BOARD, rev ${HW_REV:-unknown}"
+}
+
+stage_mux() {
+    local out
+    begin 1 "Routing JTAG through the system controller (sc_app setJTAGselect -t SC)"
+    if out="$(sc_app -c setJTAGselect -t SC 2>&1)"; then
+        record 1 "jtag mux" PASS "set to SC"
+    else
+        record 1 "jtag mux" FAIL "setJTAGselect -t SC failed: ${out:-no output}"
+    fi
+}
+
+stage_fwload() {
+    if ! prereqs_ok 1; then
+        skip_blocked 2 "dfx-mgr-fw-load"
+        return
+    fi
+    begin 2 "Checking that the PL firmware loaded (dfx-mgr-fw-load.service)"
+    if check_unit dfx-mgr-fw-load.service; then
+        record 2 "dfx-mgr-fw-load" PASS "$UNIT_DETAIL"
+    else
+        record 2 "dfx-mgr-fw-load" FAIL "$UNIT_DETAIL"
+    fi
+}
+
+stage_uio() {
+    if ! prereqs_ok 2; then
+        skip_blocked 3 "uio"
+        return
+    fi
+    begin 3 "Looking for the JTAG controller UIO devices (jtag_ctl, jtag_clock)"
+    local ctl clk
+    ctl="$(find_uio jtag_ctl)"
+    clk="$(find_uio jtag_clock)"
+    if [[ -n "$ctl" && -n "$clk" ]]; then
+        record 3 "uio" PASS "jtag_ctl=$ctl jtag_clock=$clk"
+    else
+        record 3 "uio" FAIL "jtag_ctl=${ctl:-missing} jtag_clock=${clk:-missing}"
+    fi
+}
+
+stage_heap() {
+    if ! prereqs_ok 2; then
+        skip_blocked 4 "dma_heap"
+        return
+    fi
+    begin 4 "Looking for the TDO DMA heap (jtag_tdo_buffer)"
+    local heaps=(/dev/dma_heap/jtag_tdo_buffer@*)
+    if [[ -e "${heaps[0]}" ]]; then
+        record 4 "dma_heap" PASS "$(basename "${heaps[0]}")"
+    else
+        record 4 "dma_heap" FAIL "no /dev/dma_heap/jtag_tdo_buffer@*"
+    fi
+}
+
+# dma_heap_test runs as an ExecStartPre of the config unit. It is not re-run
+# here, since allocating from jtag_tdo_buffer while hw_server holds its TDO
+# buffer risks a false failure; the boot-time run is trusted instead, which is
+# only valid if the installed unit actually has that ExecStartPre.
+stage_config() {
+    if ! prereqs_ok 3 4; then
+        skip_blocked 5 "config service"
+        return
+    fi
+    begin 5 "Checking jtag-controller-config.service and its boot-time dma_heap_test"
+    local healthy=1 heap_ok=1 detail line journal="$RUN_DIR/config-journal.log"
+
+    EXTRA[5]=""
+    check_unit "$CONFIG_UNIT" || healthy=0
+    detail="$UNIT_DETAIL"
+
+    if [[ ! -x "$DMA_HEAP_TEST" ]]; then
+        detail+=", dma_heap_test NOT RUN ($DMA_HEAP_TEST missing)"
+        heap_ok=0
+    elif ! systemctl show -p ExecStartPre "$CONFIG_UNIT" 2>/dev/null |
+            grep -q dma_heap_test; then
+        detail+=", dma_heap_test NOT RUN (unit lacks ExecStartPre)"
+        heap_ok=0
+    elif (( healthy )); then
+        detail+=", dma_heap_test PASS (boot-time)"
+    fi
+
+    if (( ! healthy )); then
+        journalctl -u "$CONFIG_UNIT" -b -n 20 --no-pager >"$journal" 2>&1
+        detail+=", see config-journal.log"
+        while IFS= read -r line; do
+            add_extra 5 "$line"
+        done < <(tail -n 5 "$journal")
+    fi
+
+    if (( healthy && heap_ok )); then
+        record 5 "config service" PASS "$detail"
+    else
+        record 5 "config service" FAIL "$detail"
+    fi
+}
+
+# The proxy file is JSON generated once at boot from the UIO numbering of the
+# time. A later firmware reload can renumber the UIOs and leave it pointing at
+# the wrong devices, so check it against live state, not just for existence.
+stage_proxy() {
+    if ! prereqs_ok 3 4; then
+        skip_blocked 6 "proxy config"
+        return
+    fi
+    begin 6 "Checking $PROXY against the live devices"
+    if [[ ! -f "$PROXY" ]]; then
+        record 6 "proxy config" FAIL "$PROXY missing"
+        return
+    fi
+
+    local out fields problems=() msg jtag mmcm tdo addr
+    if ! out="$(python3 - "$PROXY" 2>&1 <<'EOF'
+import json, sys
+with open(sys.argv[1]) as f:
+    cfg = json.load(f)
+for key in ("JTAGFilepath", "MMCMFilepath", "TDOFilepath", "TDOAXIAddress"):
+    print(cfg[key])
+EOF
+    )"; then
+        record 6 "proxy config" FAIL "invalid JSON: ${out##*$'\n'}"
+        return
+    fi
+    mapfile -t fields <<<"$out"
+    jtag="${fields[0]}"
+    mmcm="${fields[1]}"
+    tdo="${fields[2]}"
+    addr="${fields[3]}"
+
+    uio_dev_is "$jtag" jtag_ctl ||
+        problems+=("JTAGFilepath $jtag is not jtag_ctl")
+    uio_dev_is "$mmcm" jtag_clock ||
+        problems+=("MMCMFilepath $mmcm is not jtag_clock")
+    [[ -e "$tdo" ]] ||
+        problems+=("TDOFilepath $tdo missing")
+    [[ "${addr,,}" == "0x${tdo##*@}" ]] ||
+        problems+=("TDOAXIAddress $addr does not match $tdo")
+
+    if (( ${#problems[@]} == 0 )); then
+        record 6 "proxy config" PASS "JSON valid, paths match live UIO"
+    else
+        printf -v msg '%s; ' "${problems[@]}"
+        record 6 "proxy config" FAIL "${msg%; }"
+    fi
+}
+
+stage_hws() {
+    if ! prereqs_ok 1; then
+        skip_blocked 7 "hws0.txt"
+        return
+    fi
+    begin 7 "Checking the hw_server init file $HWS_INIT"
+    if [[ ! -r "$HWS_INIT" ]]; then
+        record 7 "hws0.txt" FAIL "$HWS_INIT missing"
+        return
+    fi
+    local servers
+    servers="$(awk '$1 == "set" && $2 == "auto-open-servers" { print $3 }' "$HWS_INIT")"
+    if [[ ",$servers," == *",pcie-js:$PROXY,"* ]]; then
+        record 7 "hws0.txt" PASS "-> $PROXY"
+    else
+        record 7 "hws0.txt" FAIL "auto-open-servers is '${servers:-unset}', expected pcie-js:$PROXY"
+    fi
+}
+
+# Read the controller version through the UIO that maps it, so no /dev/mem
+# access is needed. Gated on the UIO stage: reading PL addresses when the
+# design is not loaded can hang the bus.
+stage_version() {
+    if ! prereqs_ok 3; then
+        skip_blocked 8 "controller version"
+        return
+    fi
+    begin 8 "Reading the JTAG controller version at $VERSION_ADDR"
+
+    local out uio value
+    if ! out="$(python3 - "$VERSION_ADDR" 2>&1 <<'EOF'
+import mmap, os, struct, sys
+
+addr = int(sys.argv[1], 0)
+for uio in sorted(os.listdir("/sys/class/uio")):
+    map0 = f"/sys/class/uio/{uio}/maps/map0"
+    base = int(open(f"{map0}/addr").read(), 0)
+    size = int(open(f"{map0}/size").read(), 0)
+    if base <= addr < base + size:
+        fd = os.open(f"/dev/{uio}", os.O_RDONLY | os.O_SYNC)
+        regs = mmap.mmap(fd, size, mmap.MAP_SHARED, mmap.PROT_READ)
+        print(uio, hex(struct.unpack_from("<I", regs, addr - base)[0]))
+        regs.close()
+        os.close(fd)
+        break
+else:
+    sys.exit(f"no UIO maps {addr:#x}")
+EOF
+    )"; then
+        record 8 "controller version" FAIL "read failed: ${out##*$'\n'}"
+        return
+    fi
+    read -r uio value <<<"$out"
+    if (( value == EXPECTED_VERSION )); then
+        record 8 "controller version" PASS "$(printf '0x%04X' "$value") at $VERSION_ADDR ($uio)"
+    else
+        record 8 "controller version" FAIL "$(printf '0x%04X, expected 0x%04X' "$value" "$EXPECTED_VERSION") at $VERSION_ADDR ($uio)"
+    fi
+}
+
+stage_hw_server() {
+    if ! prereqs_ok 6 7; then
+        skip_blocked 9 "hw_server"
+        return
+    fi
+    begin 9 "Checking hw_server and scanning the JTAG chain"
+    if ! check_unit hw_server.service; then
+        record 9 "hw_server" FAIL "$UNIT_DETAIL"
+        return
+    fi
+    # A running hw_server can still be stuck on a wedged controller, which
+    # would make every later stage hang, so prove a JTAG scan completes.
+    if jtag_probe; then
+        record 9 "hw_server" PASS "$UNIT_DETAIL, $JTAG_PROBE_DETAIL"
+    else
+        record 9 "hw_server" FAIL "$UNIT_DETAIL, $JTAG_PROBE_DETAIL"
+    fi
+}
+
+stage_cs_server() {
+    if ! prereqs_ok 1; then
+        skip_blocked 10 "cs_server"
+        return
+    fi
+    begin 10 "Checking cs_server"
+    if check_unit cs_server.service; then
+        record 10 "cs_server" PASS "$UNIT_DETAIL"
+    else
+        record 10 "cs_server" FAIL "$UNIT_DETAIL"
+    fi
+}
+
+# Report measurements from the jtag_debug_test log. Evidence only: a healthy
+# run is full of benign 'warning:' and 'Cannot stop' lines, so the log never
+# sets the verdict.
+debug_evidence() {
+    local log="$1" device idcode clock jtag jtag_sweep hsdp hsdp_sweep pct note
+
+    device="$(awk '/^\* Context created / && !/ \/ / {
+                       sub(/\r$/, ""); sub(/^\* Context created /, ""); print; exit }' "$log")"
+    idcode="$(grep -o -m1 'dpc-jsn-[^ ]*-[0-9a-fA-F]\{8\}-[0-9]*' "$log" |
+                  sed 's/.*-\([0-9a-fA-F]\{8\}\)-[0-9]*$/\1/')"
+    clock="$(log_clock "$log")"
+    read -r jtag jtag_sweep <<<"$(peak_rate "JTAG cable tests:" "Mbit/sec" "$log")"
+    read -r hsdp hsdp_sweep <<<"$(peak_rate "HSDP cable tests:" "MB/sec" "$log")"
+
+    # -fast runs print no 'Context created' lines; use the stage 9 scan.
+    device="${device:-$PROBE_DEVICE}"
+    if [[ -n "$device" || -n "$idcode" ]]; then
+        add_extra 11 "Device:     ${device:-unknown}${idcode:+  IDCODE $idcode}"
+    fi
+    if [[ "$clock" =~ ^[0-9]+$ ]]; then
+        add_extra 11 "JTAG clock: $(mhz "$clock") MHz"
+    fi
+    if [[ -n "$jtag" ]]; then
+        note=""
+        if [[ "$clock" =~ ^[0-9]+$ ]]; then
+            pct="$(awk -v j="$jtag" -v c="$clock" 'BEGIN { printf "%.1f", j / (c / 1e6) * 100 }')"
+            note=" ($pct% of clock)"
+        fi
+        [[ "$jtag_sweep" == "partial" ]] && note+=" - sweep cut short, raise --debug-time"
+        add_extra 11 "JTAG cable: peak $jtag Mbit/sec$note"
+    elif (( ! DEBUG_ITERATIONS )); then
+        # Only a timed run can stop short of the sweep; -fast iterations
+        # do not run the cable tests at all.
+        add_extra 11 "JTAG cable: sweep not reached, raise --debug-time"
+    fi
+    if [[ -n "$hsdp" ]]; then
+        note=""
+        [[ "$hsdp_sweep" == "partial" ]] && note=" (sweep still running when stopped)"
+        add_extra 11 "HSDP cable: peak $hsdp MB/sec$note"
+    fi
+    [[ -z "${EXTRA[11]}" ]] && add_extra 11 "no device or throughput data in log"
+}
+
+# follow_log <id> <log>: print jtag_debug_test milestones added to the log
+# since the last call, so the user sees what the test is doing as it runs.
+# FOLLOWED holds the number of lines already seen.
+follow_log() {
+    local line total phase
+    # Only read complete lines; the test may be mid-way through writing one.
+    total="$(wc -l <"$2" 2>/dev/null)" || return 0
+    (( total > FOLLOWED )) || return 0
+    while IFS= read -r line; do
+        line="${line%$'\r'}"
+        case "$line" in
+            "  port "*": "[0-9]*)
+                progress "$1" "JTAG clock: $(mhz "${line##* }") MHz" ;;
+            "JTAG cable tests:"*)
+                progress "$1" "JTAG cable test" ;;
+            "HSDP cable tests:"*)
+                progress "$1" "HSDP cable test" ;;
+            "  speed "*"Mbit/sec"|"  size "*"MB/sec")
+                progress "$1" "  ${line#"${line%%[! ]*}"}" ;;
+            "Test iteration "*|"Finished last test pass"*)
+                progress "$1" "$line" ;;
+            "Reset "*|"Set "*|"Setting "*|"Clear memory"*|"Stop "*|"Test "*)
+                # Phase lines repeat per target; print each phase once.
+                phase="${line%%:*}"
+                phase="${phase%% at 0x*}"
+                phase="${phase%%, context*}"
+                if [[ "$phase" != "$LAST_PHASE" ]]; then
+                    LAST_PHASE="$phase"
+                    progress "$1" "$phase"
+                fi ;;
+        esac
+    done < <(sed -n "$((FOLLOWED + 1)),${total}p" "$2")
+    FOLLOWED=$total
+}
+
+# Run jtag_debug_test with hw_server stopped. By default it runs a fixed number
+# of iterations and ends by itself, reporting its own errors. With
+# --debug-time it runs for that long instead, and staying alive is the pass
+# criterion.
+stage_debug_test() {
+    if ! prereqs_ok 9; then
+        skip_blocked 11 "jtag debug test"
+        return
+    fi
+    if [[ ! -x "$JTAG_DEBUG_TEST" ]]; then
+        record 11 "jtag debug test" FAIL "$JTAG_DEBUG_TEST not found"
+        return
+    fi
+
+    local log="$RUN_DIR/jtag_debug_test.log" elapsed=0 rc="" limit result detail
+    local args=(-f"$((DEBUG_FREQ * 1000000))" -e "auto-open-servers=pcie-js:$PROXY")
+    if (( ! DEBUG_ITERATIONS )); then
+        limit=$DEBUG_TIME
+        begin 11 "JTAG debug test: jtag_debug_test for ${DEBUG_TIME}s at $DEBUG_FREQ MHz"
+    else
+        limit=$((DEBUG_ITERATIONS * ITERATION_TIMEOUT))
+        # -fast skips the long memory sweeps, which keeps an iteration to
+        # about a minute at 30 MHz.
+        args=(-cnt "$DEBUG_ITERATIONS" -fast "${args[@]}")
+        begin 11 "JTAG debug test: jtag_debug_test, $(iterations "$DEBUG_ITERATIONS") at $DEBUG_FREQ MHz"
+    fi
+
+    hw_server_stop 11
+    progress 11 "starting jtag_debug_test ${args[*]}"
+    "$JTAG_DEBUG_TEST" "${args[@]}" >"$log" 2>&1 &
+    CHILD_PID=$!
+    FOLLOWED=0
+    LAST_PHASE=""
+    while (( elapsed < limit )) && is_running "$CHILD_PID"; do
+        sleep 1
+        elapsed=$((elapsed + 1))
+        follow_log 11 "$log"
+        ticker 11 "JTAG debug test: ${elapsed}s$( (( DEBUG_ITERATIONS )) || echo "/${DEBUG_TIME}s")" "$elapsed"
+    done
+    if is_running "$CHILD_PID"; then
+        stop_process "$CHILD_PID"
+    else
+        wait "$CHILD_PID"
+        rc=$?
+    fi
+    CHILD_PID=""
+    follow_log 11 "$log"
+
+    if (( ! DEBUG_ITERATIONS )); then
+        if [[ -z "$rc" ]]; then
+            result=PASS
+            detail="alive ${DEBUG_TIME}s"
+        elif (( rc == 0 )); then
+            result=PASS
+            detail="completed after ${elapsed}s, exit 0"
+        else
+            result=FAIL
+            detail="exited after ${elapsed}s with status $rc"
+        fi
+    elif [[ -z "$rc" ]]; then
+        result=FAIL
+        detail="did not finish $(iterations "$DEBUG_ITERATIONS") within ${limit}s"
+    elif (( rc == 0 )) && grep -q "^Finished last test pass without errors" "$log"; then
+        result=PASS
+        detail="$(iterations "$DEBUG_ITERATIONS") without errors in ${elapsed}s"
+    else
+        result=FAIL
+        detail="$(grep -m1 -E "^(Test iteration [0-9]+ failed|Finished last test pass, [0-9]+ errors)" "$log" |
+                      tr -d '\r')"
+        detail="${detail:-exited with status $rc after ${elapsed}s}"
+    fi
+
+    # Per-iteration times, then throughput evidence.
+    while IFS= read -r line; do
+        add_extra 11 "$line"
+    done < <(tr -d '\r' <"$log" | grep -E "^Test iteration [0-9]+ (completed|failed)")
+    debug_evidence "$log"
+    record 11 "jtag debug test" "$result" "$detail"
+    restart_hw_server_after 11
+}
+
+# Bring hw_server back after a jtag_debug_test run. If it does not return,
+# mark stage 9 failed so the stages that need it are skipped, not failed.
+restart_hw_server_after() {
+    if ! hw_server_start "$1"; then
+        record 9 "hw_server" FAIL "unusable after ${NAME[$1]}: $HW_START_DETAIL"
+    fi
+}
+
+stage_program() {
+    if [[ "$LEVEL" != "full" ]]; then
+        record 12 "program DUT" SKIP "--level full"
+        return
+    fi
+    if ! prereqs_ok 9; then
+        skip_blocked 12 "program DUT"
+        return
+    fi
+    begin 12 "Programming the DUT"
+
+    local pdi="$PDI_OVERRIDE" variant="" log="$RUN_DIR/program.log" ms size line rc
+
+    if [[ -z "$pdi" ]]; then
+        run_xsdb 60 "$RUN_DIR/silicon.tcl" >"$RUN_DIR/silicon.log" 2>&1
+        variant="$(xsdb_value SILICON "$RUN_DIR/silicon.log")"
+        if [[ "$variant" != "ES1" && "$variant" != "PROD" ]]; then
+            record 12 "program DUT" FAIL "could not read silicon revision, see silicon.log"
+            return
+        fi
+        if ! pdi="$(resolve_pdi "$variant")"; then
+            record 12 "program DUT" FAIL "no $variant PDI in $BIT_ROOT/$BOARD: $(ls "$BIT_ROOT/$BOARD" 2>&1 | tr '\n' ' ')"
+            return
+        fi
+    fi
+    if [[ ! -r "$pdi" ]]; then
+        record 12 "program DUT" FAIL "$pdi not found"
+        return
+    fi
+
+    progress 12 "programming $(basename "$pdi")"
+    run_xsdb 300 "$RUN_DIR/program_pdi.tcl" "$pdi" >"$log" 2>&1
+    rc=$?
+    if (( rc == 124 )); then
+        record 12 "program DUT" FAIL "xsdb timed out after 300s, see program.log"
+    elif (( rc == 0 )) && tr -d '\r' <"$log" | grep -qx PROGRAMMED; then
+        PDI="$pdi"
+        ms="$(xsdb_value TIME_MS "$log")"
+        size="$(stat -c %s "$pdi")"
+        record 12 "program DUT" PASS "$(basename "$pdi")${variant:+ ($variant silicon)}, $(awk -v b="$size" -v ms="$ms" 'BEGIN { printf "%.2f MB in %.2f s", b / 1e6, ms / 1000 }')"
+    else
+        while IFS= read -r line; do
+            add_extra 12 "$line"
+        done < <(tr -d '\r' <"$log" | tail -n 5)
+        record 12 "program DUT" FAIL "xsdb device program failed, see program.log"
+    fi
+}
+
+stage_bit() {
+    if [[ "$LEVEL" != "full" ]]; then
+        record 13 "BIT" SKIP "--level full"
+        return
+    fi
+    if ! prereqs_ok 9; then
+        skip_blocked 13 "BIT"
+        return
+    fi
+    # Check cs_server live rather than trusting stage 10: the JTAG debug test
+    # restarts it, so a cs_server that was down at the start may be running
+    # by now.
+    if ! check_unit cs_server.service; then
+        record 13 "BIT" SKIP "cs_server not running: $UNIT_DETAIL"
+        return
+    fi
+    if (( BIT_ALL )); then
+        begin 13 "Running BIT: IDCODE Verify and every DDRMC Cal Test"
+    else
+        begin 13 "Running BIT: DDRMC_1 Cal Test"
+    fi
+
+    # By default one DDRMC calibration is enough to show BIT works over JTAG;
+    # --bit-all runs the whole JTAG-relevant set.
+    local select='^DDRMC_1 Cal Test$' wanted="DDRMC_1 Cal Test"
+    if (( BIT_ALL )); then
+        select='^(IDCODE Verify|DDRMC_[0-9]+ Cal Test)$'
+        wanted="IDCODE/DDRMC tests"
+    fi
+
+    local tests=() name out rc start secs n=0 failed=0 log="$RUN_DIR/bit.log"
+    mapfile -t tests < <(timeout 30 sc_app -c listBIT 2>/dev/null |
+                             sed 's/[[:space:]]*$//' |
+                             grep -E "$select")
+    if (( ${#tests[@]} == 0 )); then
+        record 13 "BIT" FAIL "no $wanted in 'sc_app -c listBIT'"
+        return
+    fi
+
+    for name in "${tests[@]}"; do
+        n=$((n + 1))
+        progress 13 "BIT $n/${#tests[@]}: $name"
+        start=$SECONDS
+        out="$(timeout 300 sc_app -c BIT -t "$name" 2>&1)"
+        rc=$?
+        secs=$((SECONDS - start))
+        printf '=== %s (exit %d, %ds)\n%s\n' "$name" "$rc" "$secs" "$out" >>"$log"
+        if (( rc == 0 )) && grep -qE ': PASS[[:space:]]*$' <<<"$out"; then
+            add_extra 13 "$name: PASS (${secs}s)"
+        elif (( rc == 124 )); then
+            add_extra 13 "$name: FAIL (timed out)"
+            failed=$((failed + 1))
+        else
+            add_extra 13 "$name: FAIL (${secs}s)"
+            failed=$((failed + 1))
+        fi
+    done
+
+    if (( failed == 0 )); then
+        record 13 "BIT" PASS "${#tests[@]} tests passed"
+    else
+        record 13 "BIT" FAIL "$failed of ${#tests[@]} tests failed, see bit.log"
+    fi
+}
+
+# Run jtag_debug_test at each requested clock and report the JTAG cable sweep.
+# Each run stops as soon as its sweep completes. Report-only: a frequency fails
+# only if no complete sweep is produced.
+stage_perf_cable() {
+    if (( ! PERF )); then
+        record 14 "perf: cable" SKIP "--perf"
+        return
+    fi
+    if ! prereqs_ok 9; then
+        skip_blocked 14 "perf: cable"
+        return
+    fi
+    if [[ ! -x "$JTAG_DEBUG_TEST" ]]; then
+        record 14 "perf: cable" FAIL "$JTAG_DEBUG_TEST not found"
+        return
+    fi
+    begin 14 "Measuring JTAG cable throughput at $(IFS=,; echo "${FREQS[*]}") MHz"
+
+    local f hz log elapsed rc rate sweep clock pct orig failed=0
+
+    # Read the clock through hw_server before stopping it.
+    orig="$(jtag_freq)"
+    hw_server_stop 14
+    add_extra 14 "$(printf '%-9s %-12s %-15s %s' freq actual 'peak Mbit/sec' '% of clock')"
+    for f in "${FREQS[@]}"; do
+        hz=$((f * 1000000))
+        log="$RUN_DIR/perf_cable_${f}MHz.log"
+        progress 14 "jtag_debug_test at $f MHz"
+        "$JTAG_DEBUG_TEST" -f"$hz" -e "auto-open-servers=pcie-js:$PROXY" >"$log" 2>&1 &
+        CHILD_PID=$!
+        elapsed=0
+        sweep=""
+        while (( elapsed < PERF_TIMEOUT )) && is_running "$CHILD_PID"; do
+            sleep 1
+            elapsed=$((elapsed + 1))
+            read -r rate sweep <<<"$(peak_rate "JTAG cable tests:" "Mbit/sec" "$log")"
+            [[ "$sweep" == "complete" ]] && break
+            ticker 14 "$f MHz: waiting for cable sweep, ${elapsed}s" "$elapsed"
+        done
+        rc=""
+        if is_running "$CHILD_PID"; then
+            stop_process "$CHILD_PID"
+        else
+            wait "$CHILD_PID"
+            rc=$?
+        fi
+        CHILD_PID=""
+
+        read -r rate sweep <<<"$(peak_rate "JTAG cable tests:" "Mbit/sec" "$log")"
+        clock="$(log_clock "$log")"
+        if [[ "$sweep" == "complete" && "$clock" =~ ^[1-9][0-9]*$ ]]; then
+            pct="$(awk -v r="$rate" -v c="$clock" 'BEGIN { printf "%.1f%%", r / (c / 1e6) * 100 }')"
+            add_extra 14 "$(printf '%-9s %-12s %-15s %s' "$f MHz" "$(mhz "$clock") MHz" "$rate" "$pct")"
+        elif [[ -n "$rc" ]]; then
+            add_extra 14 "$(printf '%-9s FAIL: jtag_debug_test exited with status %s after %ss' "$f MHz" "$rc" "$elapsed")"
+            failed=$((failed + 1))
+        else
+            add_extra 14 "$(printf '%-9s FAIL: no complete cable sweep within %ss' "$f MHz" "$PERF_TIMEOUT")"
+            failed=$((failed + 1))
+        fi
+    done
+
+    local hw_ok=1
+    if hw_server_start 14; then
+        restore_clock 14 "$orig" || failed=$((failed + 1))
+    else
+        add_extra 14 "hw_server unusable after restart: $HW_START_DETAIL"
+        failed=$((failed + 1))
+        hw_ok=0
+    fi
+    if (( failed == 0 )); then
+        record 14 "perf: cable" PASS "${#FREQS[@]} clocks measured"
+    else
+        record 14 "perf: cable" FAIL "$failed problem(s), see perf_cable_*.log"
+    fi
+    (( hw_ok )) || record 9 "hw_server" FAIL "unusable after perf: cable: $HW_START_DETAIL"
+}
+
+# Program the DUT at each requested clock and time 'device program'.
+stage_perf_program() {
+    if (( ! PERF )); then
+        record 15 "perf: program" SKIP "--perf"
+        return
+    fi
+    if [[ "$LEVEL" != "full" ]]; then
+        record 15 "perf: program" SKIP "--level full"
+        return
+    fi
+    if ! prereqs_ok 9 12; then
+        skip_blocked 15 "perf: program"
+        return
+    fi
+    begin 15 "Timing DUT programming at $(IFS=,; echo "${FREQS[*]}") MHz"
+
+    local f hz log actual ms size orig failed=0
+
+    size="$(stat -c %s "$PDI")"
+    orig="$(jtag_freq)"
+    add_extra 15 "$(printf '%-9s %-12s %-10s %s' freq actual time MB/sec)"
+    for f in "${FREQS[@]}"; do
+        hz=$((f * 1000000))
+        log="$RUN_DIR/perf_program_${f}MHz.log"
+        progress 15 "programming $(basename "$PDI") at $f MHz"
+        if run_xsdb 300 "$RUN_DIR/program_pdi.tcl" "$PDI" "$hz" >"$log" 2>&1 &&
+                tr -d '\r' <"$log" | grep -qx PROGRAMMED; then
+            actual="$(xsdb_value FREQ "$log")"
+            ms="$(xsdb_value TIME_MS "$log")"
+            add_extra 15 "$(printf '%-9s %-12s %-10s %s' "$f MHz" \
+                "$(mhz "${actual:-0}") MHz" \
+                "$(awk -v ms="$ms" 'BEGIN { printf "%.2f s", ms / 1000 }')" \
+                "$(awk -v b="$size" -v ms="$ms" 'BEGIN { printf "%.3f", b / 1e6 / (ms / 1000) }')")"
+        else
+            add_extra 15 "$(printf '%-9s FAIL: %s' "$f MHz" \
+                "$(tr -d '\r' <"$log" | grep -m1 '^ERROR' || echo "see perf_program_${f}MHz.log")")"
+            failed=$((failed + 1))
+        fi
+    done
+
+    restore_clock 15 "$orig" || failed=$((failed + 1))
+    if (( failed == 0 )); then
+        record 15 "perf: program" PASS "$(basename "$PDI"), $(awk -v b="$size" 'BEGIN { printf "%.2f MB", b / 1e6 }')"
+    else
+        record 15 "perf: program" FAIL "$failed problem(s), see perf_program_*.log"
+    fi
+}
+
+# Restart the config unit rather than running jtag-controller-config.sh
+# directly: that re-runs the dma_heap_test ExecStartPre and updates the unit's
+# state, which a bare script run would leave marked failed.
+repair() {
+    progress repair "restarting $CONFIG_UNIT, hw_server, cs_server"
+    {
+        timeout 60 systemctl restart "$CONFIG_UNIT"
+        systemctl restart hw_server.service
+        systemctl restart cs_server.service
+    } >>"$RUN_DIR/repair.log" 2>&1
+    # Give hw_server time to open the pcie-js server before re-checking.
+    sleep 5
+}
+
+run_service_stages() {
+    stage_config
+    stage_proxy
+    stage_hws
+    stage_version
+    stage_hw_server
+    stage_cs_server
+}
+
+print_banner() {
+    local perf="off" bit="" debug
+    (( PERF )) && perf="$(IFS=,; echo "${FREQS[*]}") MHz"
+    if [[ "$LEVEL" == "full" ]]; then
+        bit=", BIT DDRMC_1"
+        (( BIT_ALL )) && bit=", BIT all"
+    fi
+    printf 'jtag-selftest  -  %s rev %s  -  %s\n' "$BOARD" "${HW_REV:-unknown}" "$START_TIME"
+    if (( DEBUG_ITERATIONS )); then
+        debug="$(iterations "$DEBUG_ITERATIONS") (-fast)"
+    else
+        debug="${DEBUG_TIME}s"
+    fi
+    printf 'level %s%s, JTAG debug test %s at %s MHz, perf %s%s\n' \
+        "$LEVEL" "$bit" "$debug" "$DEBUG_FREQ" "$perf" \
+        "$( (( REPAIR )) && echo ", repair on")"
+    printf 'Log: %s/\n\n' "$RUN_DIR"
+}
+
+print_summary() {
+    local id pass=0 fail=0 skip=0
+
+    printf '\nSummary\n'
+    for id in "${ORDER[@]}"; do
+        print_row "$id"
+        case "${RESULT[$id]}" in
+            PASS) pass=$((pass + 1)) ;;
+            FAIL) fail=$((fail + 1)) ;;
+            SKIP) skip=$((skip + 1)) ;;
+        esac
+    done
+    printf '\n  %d stages: %s PASS, %s FAIL, %s SKIP\n' "${#ORDER[@]}" \
+        "$pass" "$fail" "$skip"
+    printf '  Log: %s/\n' "$RUN_DIR"
+    printf '\nNote: the JTAG mux was set to SC and is not restored on exit.\n'
+}
+
+#########################################################################
+# Main
+#########################################################################
+
+if [[ $(id -u) -ne 0 ]]; then
+    echo "Error: must run as root (sc-board-id and systemctl need it)." >&2
+    exit 2
+fi
+
+if [[ -n "$PDI_OVERRIDE" && "$LEVEL" != "full" ]]; then
+    echo "Warning: --pdi is ignored without --level full." >&2
+fi
+
+START_TIME="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+RUN_DIR="$LOG_ROOT/$(date -u '+%Y-%m-%dT%H%M%SZ')"
+if ! mkdir -p "$RUN_DIR"; then
+    echo "Error: cannot create log directory $RUN_DIR." >&2
+    exit 2
+fi
+write_tcl
+
+CHILD_PID=""
+HW_SERVER_STOPPED=0
+PROBE_DEVICE=""
+# shellcheck disable=SC2329  # invoked by the trap below
+on_interrupt() {
+    ticker_clear
+    [[ -n "$CHILD_PID" ]] && stop_process "$CHILD_PID"
+    (( HW_SERVER_STOPPED )) && hw_server_start interrupt
+    exit 130
+}
+trap on_interrupt INT TERM
+
+stage_preflight
+stage_mux
+stage_fwload
+stage_uio
+stage_heap
+run_service_stages
+
+if (( REPAIR )) && [[ "${RESULT[3]}" == "PASS" && "${RESULT[4]}" == "PASS" ]]; then
+    declare -A BEFORE=()
+    for id in 5 6 7 9 10; do
+        [[ "${RESULT[$id]}" == "FAIL" ]] && BEFORE[$id]=1
+    done
+    if (( ${#BEFORE[@]} )); then
+        repair
+        run_service_stages
+        for id in "${!BEFORE[@]}"; do
+            if [[ "${RESULT[$id]}" == "PASS" ]]; then
+                DETAIL[$id]+=" (was FAIL, repaired)"
+            else
+                DETAIL[$id]+=" (still failing after --repair)"
+            fi
+        done
+    fi
+fi
+
+stage_debug_test
+stage_program
+stage_bit
+stage_perf_cable
+stage_perf_program
+
+print_summary
+{
+    print_banner
+    USE_COLOR=0 print_summary
+} >"$RUN_DIR/summary.txt"
+
+for id in "${ORDER[@]}"; do
+    [[ "${RESULT[$id]}" == "FAIL" ]] && exit 1
+done
+exit 0
