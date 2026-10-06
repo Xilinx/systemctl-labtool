@@ -1,0 +1,1 @@
+set auto-open-servers pcie-js:/dev/xavc_jc_proxy0

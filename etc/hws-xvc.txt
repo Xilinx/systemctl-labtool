@@ -1,0 +1,2 @@
+set auto-open-servers xilinx-xvc:127.0.0.1:2542,*
+set always-open-jtag 1
