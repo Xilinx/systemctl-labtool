@@ -4,11 +4,14 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# jtag-selftest: validate the system controller JTAG controller path, from the
-# PL firmware load through hw_server to live JTAG traffic, and optionally DUT
-# programming, BIT and JTAG clock performance sweeps. Every stage runs; stages
-# whose prerequisites failed are skipped, and a PASS/FAIL summary is printed
-# at the end.
+# jtag-selftest: validate the system controller's JTAG path, from the PL
+# firmware load through hw_server to live JTAG traffic, and optionally DUT
+# programming, BIT and JTAG clock performance sweeps. The board may expose
+# either the AMD JTAG Controller (jtag_ctl + jtag_clock UIOs) or the older
+# debug_bridge + XVC path; the UIO stage detects which and sets $MODE, and
+# stages with no equivalent in the other mode report SKIP. Every stage runs;
+# stages whose prerequisites failed are skipped, and a PASS/FAIL summary is
+# printed at the end.
 #
 # Exit codes:
 #   0  all stages passed (stages skipped by option do not count)
@@ -36,6 +39,9 @@ PERF_TIMEOUT=120
 ITERATION_TIMEOUT=600
 
 PROXY="/dev/xavc_jc_proxy0"
+# Set by stage_uio (stage 3): "controller" (jtag_ctl + jtag_clock UIOs) or
+# "xvc" (debug_bridge UIO). Empty until then, and if neither UIO is found.
+MODE=""
 # hw_server reads the init file that jtag-mode.service links for the board.
 HWS_INIT="/run/labtool/hws.txt"
 CONFIG_UNIT="jtag-controller-config.service"
@@ -57,23 +63,36 @@ usage() {
 Usage: $prog [options]
 
 Validate the system controller JTAG path and print a PASS/FAIL summary.
+Detects whether the board uses the AMD JTAG Controller or debug_bridge/XVC
+and runs the matching stages; the other mode's stages report SKIP.
+Programming and BIT work in both modes. --perf is controller-only: XVC's
+clock is not adjustable, so neither cable throughput nor per-clock
+programming time can be measured there.
 
 Options:
-  --level basic|full  basic: non-destructive checks and JTAG debug test (default)
+  --level basic|full  basic: non-destructive checks and JTAG debug test
+                      (controller mode only; default)
                       full:  also program the DUT and run DDRMC_1 Cal Test
-  --bit-all           with --level full, run IDCODE Verify and every
-                      DDRMC_* Cal Test instead of DDRMC_1 only
-  --perf              measure JTAG cable throughput at each --freqs clock;
-                      with --level full, also time DUT programming at each
+                      (both modes)
+  --bit-all           with --level full, run every automatic test in
+                      'sc_app -c listBIT' instead of DDRMC_1 Cal Test only
+                      (tests marked "Manual Test" are never run)
+  --perf              measure JTAG cable throughput, and with --level
+                      full also time DUT programming, at each --freqs
+                      clock (controller mode only; always SKIP on XVC)
   --freqs <list>      comma-separated JTAG clocks in MHz (default $(IFS=,; echo "${FREQS[*]}"))
-  --repair            on failure, restart $CONFIG_UNIT,
-                      hw_server and cs_server, then re-check
-  --debug-freq <MHz>  JTAG clock for the JTAG debug test (default $DEBUG_FREQ)
-  --debug-time <sec>  how long to run the JTAG debug test; passes if
-                      jtag_debug_test is still running at the end (default $DEBUG_TIME)
+  --repair            on failure, restart the board's JTAG service
+                      ($CONFIG_UNIT or xvc.service), hw_server
+                      and cs_server, then re-check
+  --debug-freq <MHz>  JTAG clock for the JTAG debug test, controller mode
+                      only (default $DEBUG_FREQ)
+  --debug-time <sec>  how long to run the JTAG debug test, controller mode
+                      only; passes if jtag_debug_test is still running at
+                      the end (default $DEBUG_TIME)
   --debug-iterations <n>
                       instead of a fixed time, run n jtag_debug_test -fast
                       iterations and pass if they finish without errors
+                      (controller mode only)
   --pdi <path>        PDI to program with --level full (default: autodetect)
   --log-dir <dir>     log root (default $LOG_ROOT)
   -h, --help          show this help
@@ -84,7 +103,7 @@ Examples:
   $prog --debug-iterations 1     one -fast iteration instead of a fixed time
   $prog --debug-freq 10          run the JTAG debug test at 10 MHz
   $prog --level full             also program the DUT, run DDRMC_1 BIT
-  $prog --level full --bit-all   run IDCODE and all DDRMC BIT tests
+  $prog --level full --bit-all   run every BIT test, not just DDRMC_1
   $prog --level full --repair    full run, restarting services on failure
   $prog --perf                   cable throughput at 30, 50 and 100 MHz
   $prog --level full --perf      also time programming at each clock
@@ -438,7 +457,7 @@ jtag_probe() {
     fi
     devices="$(tr -d '\r' <"$log" | grep -c 'idcode')"
     if ! tr -d '\r' <"$log" | grep -qx PROBE_DONE || (( devices == 0 )); then
-        JTAG_PROBE_DETAIL="JTAG scan found no device behind $PROXY, see jtag_probe.log"
+        JTAG_PROBE_DETAIL="JTAG scan found no device on the JTAG chain, see jtag_probe.log"
         return 1
     fi
     # Lines look like "  3  xc2ve3858 (idcode 04db0093 irlen 6 pdi_programmable)".
@@ -472,8 +491,9 @@ mhz() {
 # Write the xsdb scripts used by the programming and perf stages.
 write_tcl() {
     # Replaces jtag_ready from xsdb_funcs.tcl, which still connects the retired
-    # XVC URL TCP:127.0.0.1:2542 and leaves a dead XVC cable in hw_server's
-    # list. hw_server already opens the JTAG controller from hws0.txt.
+    # XVC URL TCP:127.0.0.1:2542. hw_server already opens the right cable
+    # itself from its init file (hws0.txt or hws-xvc.txt), so a bare 'connect'
+    # finds it in both modes; -xvc-url only adds a second, dead entry.
     # shellcheck disable=SC2016  # Tcl variables, not shell
     local jtag_ready_proc='proc jtag_ready {} {
     connect
@@ -484,6 +504,12 @@ write_tcl() {
         after 100
     }
 }'
+    # Select the controller's or XVC's cable by name, in case other cables are
+    # open on hw_server. Called before $MODE is known, controller is the
+    # default; cable_filter is recomputed and these files rewritten once the
+    # UIO stage sets $MODE.
+    local cable_filter="*$PROXY*"
+    [[ "$MODE" == "xvc" ]] && cable_filter="*127.0.0.1:2542*"
 
     cat >"$RUN_DIR/program_pdi.tcl" <<EOF
 # program_pdi.tcl <pdi> [<jtag clock hz>]
@@ -505,13 +531,16 @@ if {\$dut == "versal"} {
     exit 1
 }
 
-# Select the controller by name, in case other cables are open on hw_server.
 if {[catch {
-    jtag targets -set -filter {level == 0 && name =~ "*$PROXY*"}
+    jtag targets -set -filter {level == 0 && name =~ "$cable_filter"}
     if {\$freq != ""} {
         jtag frequency \$freq
     }
     puts "FREQ [jtag frequency]"
+    # A device left stalled by a prior failed 'device program' (e.g. "PLM
+    # stalled during programming") fails the next attempt too, so reset it
+    # via JTAG SYS_RST first and start each attempt from a clean state.
+    device reset
 } err]} {
     puts "ERROR: \$err"
     disconnect
@@ -557,7 +586,7 @@ $jtag_ready_proc
 
 jtag_ready
 if {[catch {
-    jtag targets -set -filter {level == 0 && name =~ "*$PROXY*"}
+    jtag targets -set -filter {level == 0 && name =~ "$cable_filter"}
     if {[llength \$argv] > 0} {
         jtag frequency [lindex \$argv 0]
     }
@@ -696,25 +725,39 @@ stage_fwload() {
     fi
 }
 
+# Detects which JTAG path the board's PL design exposes, the same signal
+# jtag-mode-select uses at boot: jtag_ctl + jtag_clock means the AMD JTAG
+# Controller; debug_bridge alone means XVC. Sets $MODE, which every later
+# stage branches on.
 stage_uio() {
     if ! prereqs_ok 2; then
         skip_blocked 3 "uio"
         return
     fi
-    begin 3 "Looking for the JTAG controller UIO devices (jtag_ctl, jtag_clock)"
-    local ctl clk
+    begin 3 "Looking for the JTAG UIO devices (controller: jtag_ctl+jtag_clock; XVC: debug_bridge)"
+    local ctl clk bridge
     ctl="$(find_uio jtag_ctl)"
     clk="$(find_uio jtag_clock)"
+    bridge="$(find_uio debug_bridge)"
     if [[ -n "$ctl" && -n "$clk" ]]; then
-        record 3 "uio" PASS "jtag_ctl=$ctl jtag_clock=$clk"
+        MODE=controller
+        record 3 "uio" PASS "mode=controller jtag_ctl=$ctl jtag_clock=$clk"
+    elif [[ -n "$bridge" ]]; then
+        MODE=xvc
+        record 3 "uio" PASS "mode=xvc debug_bridge=$bridge"
     else
-        record 3 "uio" FAIL "jtag_ctl=${ctl:-missing} jtag_clock=${clk:-missing}"
+        record 3 "uio" FAIL "no jtag_ctl+jtag_clock pair and no debug_bridge UIO"
     fi
+    [[ -n "$MODE" ]] && progress 3 ">>> JTAG mode: $MODE <<<"
 }
 
 stage_heap() {
-    if ! prereqs_ok 2; then
+    if ! prereqs_ok 3; then
         skip_blocked 4 "dma_heap"
+        return
+    fi
+    if [[ "$MODE" == "xvc" ]]; then
+        record 4 "dma_heap" SKIP "not applicable (XVC mode)"
         return
     fi
     begin 4 "Looking for the TDO DMA heap (jtag_tdo_buffer)"
@@ -731,7 +774,20 @@ stage_heap() {
 # buffer risks a false failure; the boot-time run is trusted instead, which is
 # only valid if the installed unit actually has that ExecStartPre.
 stage_config() {
-    if ! prereqs_ok 3 4; then
+    if ! prereqs_ok 3; then
+        skip_blocked 5 "config service"
+        return
+    fi
+    if [[ "$MODE" == "xvc" ]]; then
+        begin 5 "Checking xvc.service (xvc_server)"
+        if check_unit xvc.service; then
+            record 5 "config service" PASS "xvc.service: $UNIT_DETAIL"
+        else
+            record 5 "config service" FAIL "xvc.service: $UNIT_DETAIL"
+        fi
+        return
+    fi
+    if ! prereqs_ok 4; then
         skip_blocked 5 "config service"
         return
     fi
@@ -772,6 +828,10 @@ stage_config() {
 # time. A later firmware reload can renumber the UIOs and leave it pointing at
 # the wrong devices, so check it against live state, not just for existence.
 stage_proxy() {
+    if [[ "$MODE" == "xvc" ]]; then
+        record 6 "proxy config" SKIP "not applicable (XVC mode)"
+        return
+    fi
     if ! prereqs_ok 3 4; then
         skip_blocked 6 "proxy config"
         return
@@ -827,12 +887,19 @@ stage_hws() {
         record 7 "hw_server init" FAIL "$HWS_INIT missing"
         return
     fi
-    local servers
+    local servers want
     servers="$(awk '$1 == "set" && $2 == "auto-open-servers" { print $3 }' "$HWS_INIT")"
-    if [[ ",$servers," == *",pcie-js:$PROXY,"* ]]; then
-        record 7 "hw_server init" PASS "-> $PROXY"
+    case "$MODE" in
+        xvc)        want="xilinx-xvc:127.0.0.1:2542" ;;
+        controller) want="pcie-js:$PROXY" ;;
+        *)          want="" ;;
+    esac
+    if [[ -z "$want" ]]; then
+        record 7 "hw_server init" FAIL "JTAG mode not detected (see stage 3)"
+    elif [[ ",$servers," == *",$want,"* ]]; then
+        record 7 "hw_server init" PASS "-> $want"
     else
-        record 7 "hw_server init" FAIL "auto-open-servers is '${servers:-unset}', expected pcie-js:$PROXY"
+        record 7 "hw_server init" FAIL "auto-open-servers is '${servers:-unset}', expected $want"
     fi
 }
 
@@ -840,6 +907,10 @@ stage_hws() {
 # access is needed. Gated on the UIO stage: reading PL addresses when the
 # design is not loaded can hang the bus.
 stage_version() {
+    if [[ "$MODE" == "xvc" ]]; then
+        record 8 "controller version" SKIP "not applicable (XVC mode)"
+        return
+    fi
     if ! prereqs_ok 3; then
         skip_blocked 8 "controller version"
         return
@@ -878,7 +949,13 @@ EOF
 }
 
 stage_hw_server() {
-    if ! prereqs_ok 6 7; then
+    # hw_server's real dependency differs by mode: in controller mode it reads
+    # the proxy config (6) to find the UIOs, and that file can outlive its
+    # writing service; in XVC mode there is no such file, so xvc_server
+    # actually running (5) is the dependency instead of proxy config.
+    local deps=(6 7)
+    [[ "$MODE" == "xvc" ]] && deps=(5 7)
+    if ! prereqs_ok "${deps[@]}"; then
         skip_blocked 9 "hw_server"
         return
     fi
@@ -992,6 +1069,10 @@ follow_log() {
 # --debug-time it runs for that long instead, and staying alive is the pass
 # criterion.
 stage_debug_test() {
+    if [[ "$MODE" == "xvc" ]]; then
+        record 11 "jtag debug test" SKIP "not applicable (XVC mode, no direct controller access)"
+        return
+    fi
     if ! prereqs_ok 9; then
         skip_blocked 11 "jtag debug test"
         return
@@ -1141,23 +1222,26 @@ stage_bit() {
         return
     fi
     if (( BIT_ALL )); then
-        begin 13 "Running BIT: IDCODE Verify and every DDRMC Cal Test"
+        begin 13 "Running BIT: every automatic test in 'sc_app -c listBIT'"
     else
         begin 13 "Running BIT: DDRMC_1 Cal Test"
     fi
 
     # By default one DDRMC calibration is enough to show BIT works over JTAG;
-    # --bit-all runs the whole JTAG-relevant set.
+    # --bit-all drops the filter and runs every automatic test, not just the
+    # JTAG-relevant ones. Tests like "Buttons Test - Manual Test(2)" need an
+    # operator and never run unattended, in either mode.
     local select='^DDRMC_1 Cal Test$' wanted="DDRMC_1 Cal Test"
     if (( BIT_ALL )); then
-        select='^(IDCODE Verify|DDRMC_[0-9]+ Cal Test)$'
-        wanted="IDCODE/DDRMC tests"
+        select='.'
+        wanted="any automatic BIT tests"
     fi
 
     local tests=() name out rc start secs n=0 failed=0 log="$RUN_DIR/bit.log"
     mapfile -t tests < <(timeout 30 sc_app -c listBIT 2>/dev/null |
                              sed 's/[[:space:]]*$//' |
-                             grep -E "$select")
+                             grep -E "$select" |
+                             grep -v -- '- Manual Test')
     if (( ${#tests[@]} == 0 )); then
         record 13 "BIT" FAIL "no $wanted in 'sc_app -c listBIT'"
         return
@@ -1195,6 +1279,10 @@ stage_bit() {
 stage_perf_cable() {
     if (( ! PERF )); then
         record 14 "perf: cable" SKIP "--perf"
+        return
+    fi
+    if [[ "$MODE" == "xvc" ]]; then
+        record 14 "perf: cable" SKIP "not applicable (XVC mode, no direct controller access)"
         return
     fi
     if ! prereqs_ok 9; then
@@ -1273,6 +1361,10 @@ stage_perf_program() {
         record 15 "perf: program" SKIP "--perf"
         return
     fi
+    if [[ "$MODE" == "xvc" ]]; then
+        record 15 "perf: program" SKIP "not applicable (XVC mode, clock is not adjustable)"
+        return
+    fi
     if [[ "$LEVEL" != "full" ]]; then
         record 15 "perf: program" SKIP "--level full"
         return
@@ -1315,17 +1407,20 @@ stage_perf_program() {
     fi
 }
 
-# Restart the config unit rather than running jtag-controller-config.sh
-# directly: that re-runs the dma_heap_test ExecStartPre and updates the unit's
-# state, which a bare script run would leave marked failed.
+# Restart the mode's own service rather than running its config script
+# directly: that re-runs jtag-controller-config's dma_heap_test ExecStartPre
+# and updates the unit's state, which a bare script run would leave marked
+# failed. xvc.service has no config step, just xvc_server itself.
 repair() {
-    progress repair "restarting $CONFIG_UNIT, hw_server, cs_server"
+    local unit="$CONFIG_UNIT"
+    [[ "$MODE" == "xvc" ]] && unit="xvc.service"
+    progress repair "restarting $unit, hw_server, cs_server"
     {
-        timeout 60 systemctl restart "$CONFIG_UNIT"
+        timeout 60 systemctl restart "$unit"
         systemctl restart hw_server.service
         systemctl restart cs_server.service
     } >>"$RUN_DIR/repair.log" 2>&1
-    # Give hw_server time to open the pcie-js server before re-checking.
+    # Give hw_server time to open its JTAG server before re-checking.
     sleep 5
 }
 
@@ -1360,7 +1455,7 @@ print_banner() {
 print_summary() {
     local id pass=0 fail=0 skip=0
 
-    printf '\nSummary\n'
+    printf '\nSummary (JTAG mode: %s)\n' "${MODE:-undetected, see stage 3}"
     for id in "${ORDER[@]}"; do
         print_row "$id"
         case "${RESULT[$id]}" in
@@ -1394,7 +1489,6 @@ if ! mkdir -p "$RUN_DIR"; then
     echo "Error: cannot create log directory $RUN_DIR." >&2
     exit 2
 fi
-write_tcl
 
 CHILD_PID=""
 HW_SERVER_STOPPED=0
@@ -1412,6 +1506,7 @@ stage_preflight
 stage_mux
 stage_fwload
 stage_uio
+write_tcl
 stage_heap
 run_service_stages
 
@@ -1436,6 +1531,22 @@ fi
 stage_debug_test
 stage_program
 stage_bit
+
+if [[ "$MODE" == "xvc" && ( "${RESULT[13]}" == "PASS" || "${RESULT[13]}" == "FAIL" ) ]]; then
+    # Controller mode only ever needs hw_server stopped for jtag_debug_test's
+    # exclusive access, handled in that stage. XVC mode has no such stage, but
+    # BIT is confirmed to reprogram the DUT and open/close its own hw_server
+    # sessions behind our back on at least Spartan UltraScale+ (DDRMC_1 Cal
+    # Test recreates its session to pick up the regenerated BSCAN2JTAG path),
+    # which can leave a stale target in hw_server's JTAG target list that
+    # later xsdb target selection does not expect. Restart so perf:program
+    # sees a clean list.
+    hw_server_stop 13
+    if ! hw_server_start 13; then
+        add_extra 13 "hw_server unusable after BIT: $HW_START_DETAIL"
+    fi
+fi
+
 stage_perf_cable
 stage_perf_program
 
