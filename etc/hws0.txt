@@ -1,1 +1,2 @@
 set auto-open-servers pcie-js:/dev/xavc_jc_proxy0
+set jtag-default-frequency 30000000
